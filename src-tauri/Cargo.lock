@@ -2937,6 +2937,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rimarc"
+version = "0.1.0"
+dependencies = [
+ "cairo-rs",
+ "chrono",
+ "dirs 5.0.1",
+ "gdk",
+ "gtk",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3566,23 +3583,6 @@ dependencies = [
  "webview2-com",
  "window-vibrancy",
  "windows 0.61.3",
-]
-
-[[package]]
-name = "tauri-app"
-version = "0.1.0"
-dependencies = [
- "cairo-rs",
- "chrono",
- "dirs 5.0.1",
- "gdk",
- "gtk",
- "serde",
- "serde_json",
- "sysinfo",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
 ]
 
 [[package]]

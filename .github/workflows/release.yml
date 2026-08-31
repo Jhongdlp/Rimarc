@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+env:
+  NO_STRIP: 'true'
+
 jobs:
   release:
     permissions:
@@ -48,19 +51,63 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libayatana-appindicator3-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libayatana-appindicator3-dev libfuse2
 
       - name: Install frontend dependencies
         run: pnpm install
 
       - name: Build Tauri Application
         uses: tauri-apps/tauri-action@v0
+        id: tauri_build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.1.0' }}
           releaseName: 'Rimarc v__VERSION__'
-          releaseBody: 'Descarga el instalador correspondiente a tu sistema operativo (Linux .deb/.AppImage, Windows .exe/.msi, macOS .dmg).'
+          releaseBody: 'Instaladores oficiales de Rimarc para Linux (.deb, .AppImage, .tar.gz), Windows (.exe, .msi) y macOS (.dmg).'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Package Linux .tar.gz (Ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          VERSION="0.1.0"
+          ARCH_DIR="rimarc_arch_build"
+          mkdir -p "${ARCH_DIR}/usr/bin"
+          mkdir -p "${ARCH_DIR}/usr/share/applications"
+          mkdir -p "${ARCH_DIR}/usr/share/icons/hicolor/128x128/apps"
+          mkdir -p "${ARCH_DIR}/usr/share/licenses/rimarc"
+
+          # Copy compiled binary
+          cp src-tauri/target/release/rimarc "${ARCH_DIR}/usr/bin/rimarc"
+          chmod +x "${ARCH_DIR}/usr/bin/rimarc"
+
+          # Create desktop entry
+          cat << 'EOF' > "${ARCH_DIR}/usr/share/applications/rimarc.desktop"
+          [Desktop Entry]
+          Name=Rimarc
+          Comment=Native desktop Dynamic Island for AI Agent session monitoring
+          Exec=rimarc
+          Icon=rimarc
+          Terminal=false
+          Type=Application
+          Categories=Utility;Development;
+          StartupWMClass=rimarc
+          EOF
+
+          # Copy icon and license
+          cp src-tauri/icons/128x128.png "${ARCH_DIR}/usr/share/icons/hicolor/128x128/apps/rimarc.png"
+          cp LICENSE "${ARCH_DIR}/usr/share/licenses/rimarc/LICENSE"
+
+          # Create tar.gz
+          tar -czf "Rimarc_${VERSION}_x86_64.tar.gz" -C "${ARCH_DIR}" usr
+
+      - name: Upload Linux .tar.gz artifact
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.1.0' }}
+          files: Rimarc_*_x86_64.tar.gz
