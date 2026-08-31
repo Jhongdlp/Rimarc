@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { NOTCH, MOTION, SETTINGS_HEIGHT, STAGE, agentColor, type ThemeColors } from "../design/tokens";
 import { notchHeight, ringCenterY } from "../lib/notchGeometry";
@@ -8,39 +8,65 @@ import { RingGauge } from "./RingGauge";
 import { DetailPopover } from "./DetailPopover";
 import { SettingsPanel } from "./SettingsPanel";
 import { useInputShape } from "../hooks/useInputShape";
+import {
+  EDGE_ANGLE,
+  alongFor,
+  anchorFor,
+  columnTransform,
+  persistPlacement,
+  savedOffset,
+  setEdge,
+  syncPlacement,
+  useEdge,
+  useStage,
+  type Edge,
+} from "../lib/placement";
+import { call } from "../lib/tauri";
 import { useAutoHide } from "../lib/prefs";
 import { useTheme } from "../lib/theme";
 import type { AgentSession } from "../types";
 
-/** Con 5 agentes el notch mas el boton ya rozan los 600 px de la ventana. */
+/** Con 5 agentes el notch mas el boton ya rozan los 600 px de lienzo. */
 export const MAX_ITEMS = 5;
 
-const NOTCH_LEFT = STAGE.width - NOTCH.depth;
+/** Fraccion del camino que recorre el notch por fotograma al arrastrar. */
+const DRAG_EASE = 0.2;
 
-export interface NotchBarProps {
-  sessions: AgentSession[];
+interface DragTarget {
+  edge: Edge;
+  offset: number;
 }
 
-export function NotchBar({ sessions }: NotchBarProps) {
+export function NotchBar({ sessions }: { sessions: AgentSession[] }) {
   const { isDark, colors } = useTheme();
   const items = sessions.slice(0, MAX_ITEMS);
+
+  // Borde de pantalla al que esta pegado el notch. Toda la maqueta se escribe
+  // como si estuviera a la derecha; `columnTransform` la gira al borde real.
+  const edge = useEdge();
+  const stage = useStage(edge);
+  const angle = EDGE_ANGLE[edge];
+  useEffect(syncPlacement, []);
 
   // El disparador del boton es la linea de ajustes, no la barra: en la
   // referencia el arco esta siempre visible y pasar por la barra no abre nada.
   const settings = useHoverIntent();
   const detail = useHoverIntent();
   const [detailIndex, setDetailIndex] = useState(0);
+  const [dragging, setDragging] = useState(false);
 
   const active = items[detailIndex];
   const detailOpen = detail.hovered && Boolean(active);
 
   // El disco se abre al pasar por encima, pero el panel solo con un clic; al
-  // salir del conjunto boton+panel se sueltan los dos a la vez.
+  // salir del conjunto boton+panel se sueltan los dos a la vez. Arrastrando lo
+  // sostiene abierto: el puntero se va al otro extremo de la pantalla y si no
+  // el panel se cierra y el asa desaparece bajo el cursor.
   const [settingsPinned, setSettingsPinned] = useState(false);
-  const settingsOpen = settingsPinned && settings.hovered;
+  const settingsOpen = settingsPinned && (settings.hovered || dragging);
   useEffect(() => {
-    if (!settings.hovered) setSettingsPinned(false);
-  }, [settings.hovered]);
+    if (!settings.hovered && !dragging) setSettingsPinned(false);
+  }, [settings.hovered, dragging]);
 
   // Arranca recogido. Cualquier actividad lo despliega; el silencio lo recoge
   // otra vez pasado el tiempo que diga el ajuste, salvo que este fijo.
@@ -49,7 +75,7 @@ export function NotchBar({ sessions }: NotchBarProps) {
   const [surfaceHover, setSurfaceHover] = useState(false);
   const [expanded, setExpanded] = useState(pinned);
 
-  const busy = surfaceHover || detailOpen || settingsOpen || settings.hovered;
+  const busy = surfaceHover || dragging || detailOpen || settingsOpen || settings.hovered;
   useEffect(() => {
     if (pinned || busy) {
       setExpanded(true);
@@ -63,15 +89,24 @@ export function NotchBar({ sessions }: NotchBarProps) {
   const height = collapsed ? NOTCH.peek.height : notchHeight(items.length);
   const depth = collapsed ? NOTCH.peek.depth : NOTCH.depth;
 
+  // Sitio del notch dentro del borde. Se guarda como fraccion y no como pixeles
+  // para que no se descoloque al cambiar de pantalla ni al crecer la barra.
+  const [offset, setOffset] = useState(savedOffset);
+  const along = alongFor(offset, stage, height + NOTCH.gear.size);
+  const startDrag = useDrag(edge, setOffset, setDragging);
+
   // El panel se sale de la columna del notch, asi que mientras esta abierto la
   // mascara de input tiene que cubrir toda la ventana, no solo los 80 px.
-  const detailBottom = detailOpen
-    ? ringCenterY(detailIndex) + popoverHeight(2) / 2
-    : 0;
+  const shapeMode = dragging || detailOpen || settingsOpen ? "expanded" : collapsed ? "peek" : "bar";
+  const detailBottom = detailOpen ? ringCenterY(detailIndex) + popoverHeight(2) / 2 : 0;
   const settingsBottom = settingsOpen ? height + SETTINGS_HEIGHT / 2 : 0;
   useInputShape(
-    detailOpen || settingsOpen ? "expanded" : collapsed ? "peek" : "bar",
+    shapeMode,
     Math.max(height + NOTCH.gear.size / 2, detailBottom, settingsBottom),
+    edge,
+    // Expandido cubre la ventana entera: mandar el sitio del notch en cada
+    // fotograma del arrastre seria una llamada por fotograma para nada.
+    shapeMode === "expanded" ? 0 : along,
   );
 
   return (
@@ -79,8 +114,7 @@ export function NotchBar({ sessions }: NotchBarProps) {
       {active && (
         <DetailPopover
           session={active}
-          anchorY={ringCenterY(detailIndex)}
-          notchLeft={NOTCH_LEFT}
+          anchor={anchorFor(edge, along + ringCenterY(detailIndex), stage)}
           open={detailOpen}
           onHoverStart={detail.open}
           onHoverEnd={detail.close}
@@ -88,9 +122,10 @@ export function NotchBar({ sessions }: NotchBarProps) {
       )}
 
       <SettingsPanel
-        anchorY={height}
-        notchLeft={NOTCH_LEFT}
+        anchor={anchorFor(edge, along + height, stage)}
         open={settingsOpen}
+        onDragStart={startDrag}
+        dragging={dragging}
         onHoverStart={settings.open}
         onHoverEnd={settings.close}
       />
@@ -99,17 +134,19 @@ export function NotchBar({ sessions }: NotchBarProps) {
         style={{
           position: "absolute",
           top: 0,
-          right: 0,
+          left: 0,
           width: NOTCH.depth,
-          height: "100%",
+          height: STAGE.height,
+          transformOrigin: "0 0",
+          transform: columnTransform(edge, stage, along),
           pointerEvents: "none",
         }}
       >
         <NotchSurface
           height={height}
           depth={depth}
-          gearCenterY={height}
           dots={items.map((s) => agentColor(s.agent_type, isDark))}
+          angle={angle}
           collapsed={collapsed}
           settingsOpen={settings.hovered}
           onSettingsHoverStart={settings.open}
@@ -125,6 +162,7 @@ export function NotchBar({ sessions }: NotchBarProps) {
                   key={session.id}
                   session={session}
                   centerY={ringCenterY(i)}
+                  angle={angle}
                   colors={colors}
                   onHoverStart={() => {
                     setDetailIndex(i);
@@ -138,6 +176,74 @@ export function NotchBar({ sessions }: NotchBarProps) {
       </div>
     </div>
   );
+}
+
+/**
+ * Arrastre del notch desde el asa de ajustes. El backend solo mira: dice a que
+ * borde apunta el puntero y en que fraccion de ese borde cae. Deslizarse por el
+ * borde es una transformada CSS, no un movimiento de ventana — la ventana ya
+ * cubre el borde entero y solo se toca cuando el arrastre cruza a otro.
+ *
+ * El bucle es de `requestAnimationFrame` y no de `mousemove` a proposito: el
+ * notch persigue al objetivo por fracciones, asi que hacen falta fotogramas
+ * tambien cuando el puntero se para o se quedaria a medio camino. De ahi el
+ * tacto pegajoso.
+ *
+ * Durante el arrastre la mascara de input cubre la ventana entera (ver
+ * `dragging` mas arriba): con la mascara recogida el puntero se sale de la
+ * region en cuanto el notch se aparta y se pierden los eventos.
+ */
+function useDrag(
+  edge: Edge,
+  setOffset: (fn: (o: number) => number) => void,
+  setDragging: (v: boolean) => void,
+) {
+  const edgeRef = useRef(edge);
+  edgeRef.current = edge;
+
+  return (e: ReactMouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    setDragging(true);
+
+    let alive = true;
+    // Una llamada en vuelo como mucho: encolarlas solo anadiria retraso.
+    let inFlight = false;
+    let target: number | null = null;
+    let last = 0;
+
+    const frame = () => {
+      if (!alive) return;
+      if (!inFlight) {
+        inFlight = true;
+        void call<DragTarget>("drag_probe", { edge: edgeRef.current }).then((t) => {
+          inFlight = false;
+          if (!t || !alive) return;
+          target = t.offset;
+          if (t.edge !== edgeRef.current) {
+            // Cambiar de borde cambia de eje: ahi no hay nada que suavizar.
+            setEdge(t.edge);
+            void call("place_notch", { edge: t.edge });
+            setOffset(() => (last = t.offset));
+          }
+        });
+      }
+      if (target !== null) {
+        const to = target;
+        setOffset((o) => (last = o + (to - o) * DRAG_EASE));
+      }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+
+    const onUp = () => {
+      alive = false;
+      window.removeEventListener("mouseup", onUp);
+      setDragging(false);
+      persistPlacement(last);
+    };
+    window.addEventListener("mouseup", onUp);
+  };
 }
 
 /** Hover con cierre diferido, para poder cruzar el hueco entre dos elementos. */
@@ -162,21 +268,28 @@ function useHoverIntent() {
  * Anillo y etiqueta de un agente. Se posicionan por centro absoluto en lugar de
  * apilarse con flex: la referencia fija el paso entre anillos y la distancia
  * anillo-etiqueta, y ese ritmo no debe depender de la altura del texto.
+ *
+ * `angle` es el giro de la columna: se descuenta en el anillo y en la etiqueta,
+ * que son lo unico que tiene que leerse derecho. La maqueta no cambia, asi que
+ * en un borde horizontal la etiqueta acaba al lado del anillo en vez de debajo.
  */
 function AgentSlot({
   session,
   centerY,
+  angle,
   colors,
   onHoverStart,
   onHoverEnd,
 }: {
   session: AgentSession;
   centerY: number;
+  angle: number;
   colors: ThemeColors;
   onHoverStart: () => void;
   onHoverEnd: () => void;
 }) {
   const percent = Math.round(session.daily_percent ?? 0);
+  const upright = `rotate(${-angle}deg)`;
 
   return (
     <motion.div
@@ -198,14 +311,19 @@ function AgentSlot({
       }}
     >
       {/* Solo el anillo abre el detalle; la etiqueta queda fuera del objetivo. */}
-      <div style={{ pointerEvents: "auto" }} onMouseEnter={onHoverStart} onMouseLeave={onHoverEnd}>
+      <div
+        style={{ pointerEvents: "auto", transform: upright }}
+        onMouseEnter={onHoverStart}
+        onMouseLeave={onHoverEnd}
+      >
         <RingGauge type={session.agent_type} percent={percent} />
       </div>
       <span
         style={{
           position: "absolute",
           top: NOTCH.ring.size / 2 + NOTCH.labelOffset,
-          transform: "translateY(-50%)",
+          left: "50%",
+          transform: `translate(-50%, -50%) ${upright}`,
           fontFamily: NOTCH.label.family,
           fontSize: NOTCH.label.size,
           fontWeight: NOTCH.label.weight,

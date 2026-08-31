@@ -1,14 +1,13 @@
 import { useEffect, type ReactNode } from "react";
 import { motion, useSpring, useTransform } from "framer-motion";
-import { POPOVER, FONT_FAMILY, STAGE } from "../design/tokens";
-import { popoverPath } from "../lib/popoverPath";
+import { POPOVER, FONT_FAMILY } from "../design/tokens";
+import { bodyOrigin, popoverPath } from "../lib/popoverPath";
+import type { Anchor, PopoverDir } from "../lib/placement";
 import { useTheme } from "../lib/theme";
 
 export interface PopoverProps {
-  /** Y del centro de la cola, en coordenadas del stage. */
-  anchorY: number;
-  /** X del borde izquierdo del notch: la punta queda a `gap` de el. */
-  notchLeft: number;
+  /** Borde del notch al que se pega y hacia donde se abre. */
+  anchor: Anchor;
   height: number;
   open: boolean;
   onHoverStart?: () => void;
@@ -16,52 +15,63 @@ export interface PopoverProps {
   children: ReactNode;
 }
 
+/** Giro del path segun hacia donde se abre el panel. */
+const ROT: Record<PopoverDir, number> = { left: 0, right: 180, up: 90, down: 270 };
+
 /**
  * Concha compartida por el panel de detalle y el de ajustes: la silueta
- * (cuerpo mas cola) es un unico path regenerado desde el ancho y el alto
- * animados, asi que al abrirse el cuerpo brota de la punta de la cola en vez de
- * aparecer escalado. El contenido se pinta encima, ya sangrado por `padX`.
+ * (cuerpo mas cola) es un unico path regenerado desde la apertura animada, asi
+ * que al abrirse el cuerpo brota de la punta de la cola en vez de aparecer
+ * escalado. El contenido se pinta encima, siempre derecho: el giro vive en el
+ * path, no en la caja de texto (ver `popoverPath`).
  */
-export function Popover({
-  anchorY,
-  notchLeft,
-  height,
-  open,
-  onHoverStart,
-  onHoverEnd,
-  children,
-}: PopoverProps) {
+export function Popover({ anchor, height, open, onHoverStart, onHoverEnd, children }: PopoverProps) {
   const { colors } = useTheme();
   const progress = useSpring(open ? 1 : 0, { stiffness: 300, damping: 32, mass: 0.8 });
   useEffect(() => {
     progress.set(open ? 1 : 0);
   }, [progress, open]);
 
+  const { dir, along, inner, alongMax } = anchor;
+  const rot = ROT[dir];
+  /** El panel sale de un lado (bordes verticales) o por arriba/abajo. */
+  const sideways = dir === "left" || dir === "right";
+  const tail = POPOVER.tail.length;
+  const W = POPOVER.width;
+  const H = height;
+
+  // La cola siempre suma sobre el eje perpendicular al borde.
+  const boxW = sideways ? W + tail : W;
+  const boxH = sideways ? H : H + tail;
+  // El path se dibuja con la cola a la derecha; en los giros de +-90 el cuerpo
+  // va intercambiado para que la caja ya girada quede derecha.
+  const localW = sideways ? W : H;
+  const localH = sideways ? H : W;
+
   // El panel se centra en su ancla, pero no puede salirse de la ventana: si se
   // sale, se pega al borde y es la cola la que se desplaza dentro del cuerpo
   // para seguir apuntando al anillo.
-  const top = clamp(anchorY - height / 2, 0, Math.max(0, STAGE.height - height));
-  const apex = anchorY - top;
+  let left: number;
+  let top: number;
+  let apex: number;
+  if (sideways) {
+    top = clamp(along - H / 2, 0, Math.max(0, alongMax - H));
+    left = dir === "left" ? inner - POPOVER.gap - boxW : inner + POPOVER.gap;
+    apex = dir === "left" ? along - top : H - (along - top);
+  } else {
+    left = clamp(along - W / 2, 0, Math.max(0, alongMax - W));
+    top = dir === "down" ? inner + POPOVER.gap : inner - POPOVER.gap - boxH;
+    apex = dir === "down" ? along - left : W - (along - left);
+  }
 
   /**
-   * Un unico path para las dos cosas: la concha y el recorte del
-   * contenido. El contenido esta maquetado en su posicion final desde el primer
-   * frame, asi que sin recortarlo se veian los textos y las barras fuera de la
-   * carta mientras la concha todavia venia creciendo por detras. El
-   * desplazamiento va dentro del path en vez de en un `<g transform>` porque
-   * `clip-path` no admite transformadas.
+   * Un unico path para las dos cosas: la concha y el recorte del contenido. El
+   * contenido esta maquetado en su posicion final desde el primer frame, asi
+   * que sin recortarlo se veian los textos y las barras fuera de la carta
+   * mientras la concha todavia venia creciendo por detras.
    */
   const d = useTransform(progress, (t) =>
-    popoverPath({
-      bodyW: t * POPOVER.width,
-      bodyH: t * height,
-      tailLength: t * POPOVER.tail.length,
-      tailBase: t * POPOVER.tail.base,
-      apex: t * apex,
-      // La punta se queda quieta: el resto crece hacia la izquierda desde ella.
-      ox: (1 - t) * (POPOVER.width + POPOVER.tail.length),
-      oy: (1 - t) * apex,
-    }),
+    popoverPath({ bodyW: localW, bodyH: localH, apex, rot, t }),
   );
   // Path vacio = nada dibujado; para el recorte hace falta una forma de area
   // cero, que no es lo mismo que no tener recorte.
@@ -70,8 +80,7 @@ export function Popover({
   // solo evita que el texto asome a medio glifo en los primeros frames.
   const contentOpacity = useTransform(progress, [0.12, 0.5], [0, 1]);
 
-  const svgW = POPOVER.width + POPOVER.tail.length;
-  const left = notchLeft - POPOVER.gap - svgW;
+  const [bodyX, bodyY] = bodyOrigin(rot, tail);
 
   return (
     <div
@@ -79,17 +88,17 @@ export function Popover({
         position: "absolute",
         left,
         top,
-        width: svgW,
-        height,
+        width: boxW,
+        height: boxH,
         pointerEvents: open ? "auto" : "none",
       }}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
     >
       <motion.svg
-        width={svgW}
-        height={height}
-        viewBox={`0 0 ${svgW} ${height}`}
+        width={boxW}
+        height={boxH}
+        viewBox={`0 0 ${boxW} ${boxH}`}
         style={{ position: "absolute", inset: 0, overflow: "visible" }}
       >
         <motion.path d={d} fill={colors.surface} />
@@ -101,8 +110,8 @@ export function Popover({
         style={{
           position: "absolute",
           inset: 0,
-          width: svgW,
-          height,
+          width: boxW,
+          height: boxH,
           clipPath: clip,
           opacity: contentOpacity,
         }}
@@ -110,10 +119,10 @@ export function Popover({
         <div
           style={{
             position: "absolute",
-            left: POPOVER.padX,
-            top: 0,
+            left: bodyX + POPOVER.padX,
+            top: bodyY,
             width: POPOVER.width - POPOVER.padX * 2,
-            height,
+            height: H,
             fontFamily: FONT_FAMILY,
           }}
         >

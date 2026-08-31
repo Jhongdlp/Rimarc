@@ -37,21 +37,39 @@ Rust (`src-tauri/src/`) owns process scanning, transcript parsing, and window ge
 - `quota.rs` — sondeo de la cuota real de Claude (ver abajo).
 - `models.rs` — `AgentSession` / `SystemAgentSummary`, serde-serialized to the frontend. **`src/types.ts` mirrors these by hand — change both together.** Enums are `#[serde(rename_all = "lowercase")]`, so `AgentStatus::WaitingInput` crosses the wire as `"waitinginput"`.
 
-Commands: `scan_agents`, `set_notch_mode`, `snap_to_right_edge`, `open_in_terminal`, `open_in_file_manager`, `exit_app`.
+Commands: `scan_agents`, `set_notch_mode`, `place_notch`, `drag_probe`, `open_in_terminal`, `open_in_file_manager`, `exit_app`.
+
+### The window covers a whole screen edge
+
+The window is flush against one screen edge, spans it end to end, and reaches `STAGE_DEPTH` (420 px) inwards — most of that depth is transparent room for the popover to open into. It only ever moves or resizes when the notch changes edge; sliding the notch *along* an edge is a CSS transform inside a window that never moves. (It used to be a fixed 600 px window with the notch pinned to its origin, which put half of every edge out of reach.)
 
 ### The input shape is the whole trick
 
-The window is a fixed 340×600 rectangle that never moves or resizes. What changes is the **GTK input region** (`input_shape_combine_region`, cairo): only the rectangle matching the current UI mode catches clicks; everything else passes through to the desktop underneath. `update_input_shape` in `lib.rs` hardcodes the per-mode rectangles (all anchored to the window's right edge, scaled by the monitor scale factor):
+Since that window is transparent and covers an entire screen edge, only the rectangle matching the current UI catches clicks — the **GTK input region** (`input_shape_combine_region`, cairo); everything else passes through to the desktop. `update_input_shape` in `lib.rs` computes the rectangle in *column-local* coordinates — depth from the screen edge, `along` + run along it — and then places it according to the current edge:
 
-| mode | region |
+| mode | region (depth × run) |
 |---|---|
-| `peek` | 40×72 at the right edge |
-| `bar` | 80 wide × `max(height+100, 140)` |
-| `expanded`/other | full 340 wide × `max(height+120, 380)` |
+| `peek` | 40 × 72 |
+| `bar` | 80 × `max(height+100, 140)` |
+| `expanded`/other | the whole window |
 
-So **any change to the React layout's occupied area must be accompanied by a `set_notch_mode` invoke with a matching `height`**, or the app will either eat desktop clicks or become unclickable. `App.tsx` fires this from `handlePointerMove`, the mode handlers, and a `useEffect` that re-syncs on `notchHeight`/`displayMode`/modal-open changes.
+So **any change to the React layout's occupied area must be accompanied by a `set_notch_mode` invoke with a matching `height` and `along`**, or the app will either eat desktop clicks or become unclickable. `NotchBar` fires this through `useInputShape`.
 
-Geometry is computed once at startup (`compute_geometry`): right edge flush with the monitor's right edge, vertically at 2/7 from the top.
+### The notch lives on any screen edge
+
+`Placement { edge, offset }` (`src/lib/placement.ts`) is the whole story: which of the four screen edges, and where along it — `offset` is the notch's centre as a fraction of the edge, so it survives a resolution change. It is persisted to `localStorage` under `agentnotch.placement`; the backend only ever knows the `edge`, because the offset never leaves the front.
+
+Dragging happens from the grip in the settings panel (`GripRow`), not from the silhouette — the notch would move on any stray press otherwise, and there was no way to hint "grab here". `drag_probe` only *reads*: it reports which edge the cursor is nearest (with `EDGE_HYSTERESIS` so it doesn't flicker on the diagonals) and where along it. `NotchBar`'s rAF loop eases the offset toward that (`DRAG_EASE`) — that lag is the sticky feel, and it needs frames rather than `mousemove` events so it keeps converging with the pointer held still. `place_notch` is only called when the edge actually changes.
+
+The window is born `visible: false` and the first `place_notch` from the front is what reveals it — otherwise the WM shows a frame at its own size and position before the geometry lands.
+
+The front is written *once*, for a notch on the right edge growing downwards. The other three edges are the same layout under a rotation:
+
+- `columnTransform(edge, stage, along)` rotates the notch column into place and slides it along the edge (0°/180° for the vertical edges, ∓90° for the horizontal ones, which also swap the window's axes). Always rotations, never mirrors — a mirror would reverse the text.
+- Only what has to *read* takes the inverse rotation: the ring gauge, the `%` label, and the gear glyph (`angle` prop). The layout itself is untouched, so on a horizontal edge the label ends up beside its ring instead of under it. **The settings arc is not in that list** — in rest it is just the sliver of the disc poking past the silhouette's tip, so it has to keep rotating *with* the silhouette or it detaches and floats beside the notch. Its centre rides `animatedHeight`/`animatedDepth`, not the target height, for the same reason: on the target it drifts off the tip while the notch is growing.
+- `popoverPath` takes the same `rot` and maps its points, so the popover shell keeps its upright body with the tail on whichever side the notch is. For ±90 the caller passes `bodyW`/`bodyH` swapped — see `Popover`.
+
+`pnpm check:geometry` asserts, on all four edges, that `anchorFor` agrees with where `columnTransform` actually puts the ring, that the popover tail lands on it, and that the notch reaches both ends of its edge. Run it after touching `popoverPath`, `placement`, or `Popover`.
 
 ### Frontend state machine
 

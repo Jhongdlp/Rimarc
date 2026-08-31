@@ -27,6 +27,7 @@ export interface Strings {
   themeSystem: string;
   autoHide: string;
   pinned: string;
+  position: string;
 }
 
 const STRINGS: Record<Lang, Strings> = {
@@ -46,6 +47,7 @@ const STRINGS: Record<Lang, Strings> = {
     themeSystem: "Sistema",
     autoHide: "Ocultar tras",
     pinned: "Fijo",
+    position: "Posicion",
   },
   en: {
     usage: (agent: string) => `${agent} Usage`,
@@ -63,6 +65,7 @@ const STRINGS: Record<Lang, Strings> = {
     themeSystem: "System",
     autoHide: "Hide after",
     pinned: "Pinned",
+    position: "Position",
   },
 };
 

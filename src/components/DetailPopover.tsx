@@ -4,6 +4,7 @@ import { Popover, PopoverHeader } from "./Popover";
 import { AgentIcon } from "./icons/AgentIcon";
 import { UsageBar } from "./UsageBar";
 import { useI18n, type Strings } from "../lib/i18n";
+import type { Anchor } from "../lib/placement";
 import { useTheme } from "../lib/theme";
 import type { AgentSession } from "../types";
 
@@ -11,9 +12,8 @@ const CONTENT_W = POPOVER.width - POPOVER.padX * 2;
 
 export interface DetailPopoverProps {
   session: AgentSession;
-  /** Y del centro del anillo al que apunta la cola, en coordenadas del stage. */
-  anchorY: number;
-  notchLeft: number;
+  /** Anilla a la que apunta la cola, ya resuelta contra el borde de pantalla. */
+  anchor: Anchor;
   open: boolean;
   onHoverStart: () => void;
   onHoverEnd: () => void;
@@ -22,8 +22,7 @@ export interface DetailPopoverProps {
 /** Panel de detalle de un agente: cuota diaria y semanal. */
 export function DetailPopover({
   session,
-  anchorY,
-  notchLeft,
+  anchor,
   open,
   onHoverStart,
   onHoverEnd,
@@ -34,8 +33,7 @@ export function DetailPopover({
 
   return (
     <Popover
-      anchorY={anchorY}
-      notchLeft={notchLeft}
+      anchor={anchor}
       height={popoverHeight(sections.length)}
       open={open}
       onHoverStart={onHoverStart}

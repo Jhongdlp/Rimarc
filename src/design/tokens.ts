@@ -17,7 +17,14 @@ import type { AgentType } from "../types";
 export const FONT_FAMILY =
   '"Fira Sans Compressed", "SF Compact Display", "Inter Tight", "Roboto Condensed", system-ui, sans-serif';
 
-/** Ventana Tauri (src-tauri/tauri.conf.json). 1 unidad = 1 px logico. */
+/**
+ * `width` es lo que se mete la ventana hacia dentro desde el borde de pantalla
+ * (`STAGE_DEPTH` en src-tauri); el otro eje lo cubre entero, asi que el largo
+ * de la ventana no es una constante — sale de `useStage`. `height` es el largo
+ * del lienzo local en el que se dibuja la barra, que se desliza dentro de ese
+ * borde: tiene que dar para `notchHeight(MAX_ITEMS)` mas el boton.
+ * 1 unidad = 1 px logico.
+ */
 export const STAGE = { width: 420, height: 600 } as const;
 
 export const NOTCH = {
@@ -190,8 +197,8 @@ export const SETTINGS = {
   control: 24,
   /** Del centro de una etiqueta al centro de la siguiente. */
   rowPitch: 52,
-  /** Filas del panel: idioma, tema y auto-ocultado. */
-  rows: 3,
+  /** Filas del panel: idioma, tema, auto-ocultado y posicion. */
+  rows: 4,
 } as const;
 
 /** Alto total del panel de ajustes. */

@@ -40,6 +40,11 @@ jobs:
           node-version: 22
           cache: 'pnpm'
 
+      - name: Read version from tauri.conf.json
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -60,7 +65,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.1.0' }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.version.outputs.version) }}
           releaseName: 'Rimarc v__VERSION__'
           releaseBody: 'Instaladores oficiales de Rimarc para Linux (.deb, .AppImage, .tar.gz), Windows (.exe, .msi) y macOS (.dmg).'
           releaseDraft: false
@@ -70,7 +75,7 @@ jobs:
       - name: Package Linux .tar.gz (Ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
-          VERSION="0.1.0"
+          VERSION="${{ steps.version.outputs.version }}"
           ARCH_DIR="rimarc_arch_build"
           mkdir -p "${ARCH_DIR}/usr/bin"
           mkdir -p "${ARCH_DIR}/usr/share/applications"
@@ -107,5 +112,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.1.0' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.version.outputs.version) }}
           files: Rimarc_*_x86_64.tar.gz

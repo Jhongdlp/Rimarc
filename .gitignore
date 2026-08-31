@@ -56,3 +56,6 @@ desktop.ini
 *.bak
 *.tmp
 *~
+
+# Local package artifacts
+*.pkg.tar.zst

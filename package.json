@@ -1,12 +1,13 @@
 {
   "name": "rimarc",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:tauri": "pnpm tauri dev",
     "build": "tsc && vite build",
+    "check:geometry": "jiti src/lib/geometry.check.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "build:tauri": "NO_STRIP=true tauri build",
@@ -28,6 +29,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "jiti": "^2.7.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"

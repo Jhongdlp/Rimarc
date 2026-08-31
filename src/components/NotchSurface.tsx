@@ -10,10 +10,10 @@ export interface NotchSurfaceProps {
   height: number;
   /** Fondo objetivo. Recogido vale `NOTCH.peek.depth`. */
   depth: number;
-  /** Y del centro del boton de ajustes; coincide con la punta inferior. */
-  gearCenterY: number;
   /** Un color por agente activo. Solo se pintan con el notch recogido. */
   dots: string[];
+  /** Giro de la columna, para descontarlo en lo que tiene que leerse derecho. */
+  angle: number;
   /** true = notch recogido: se ven los puntos y no hay boton de ajustes. */
   collapsed: boolean;
   /** true = el arco de reposo ya se abrio en disco. */
@@ -40,8 +40,8 @@ const EDGE = NOTCH.depth;
 export function NotchSurface({
   height,
   depth,
-  gearCenterY,
   dots,
+  angle,
   collapsed,
   settingsOpen,
   onSettingsHoverStart,
@@ -69,7 +69,8 @@ export function NotchSurface({
    * todavia venia creciendo por detras. Mismo arreglo que en `Popover`.
    */
   const clip = useTransform(d, (path) => `path("${path}")`);
-  // Los puntos viven en el eje del cuerpo, que se mueve con el fondo.
+  // Los puntos y el boton viven en el eje del cuerpo, que se mueve con el
+  // fondo. El boton ademas se ancla a la punta, que se mueve con el alto.
   const dotCx = useTransform(animatedDepth, (w) => EDGE - w / 2);
 
   // Centrados en la silueta recogida, que es la unica en la que se ven.
@@ -120,8 +121,9 @@ export function NotchSurface({
 
       {!collapsed && (
         <SettingsMorph
-          cx={EDGE - NOTCH.depth / 2}
-          cy={gearCenterY}
+          cx={dotCx}
+          cy={animatedHeight}
+          angle={angle}
           open={settingsOpen}
           onHoverStart={onSettingsHoverStart}
           onHoverEnd={onSettingsHoverEnd}

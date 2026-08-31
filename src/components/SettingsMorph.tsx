@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { motion, useSpring, useTransform } from "framer-motion";
+import { motion, useSpring, useTransform, type MotionValue } from "framer-motion";
 import { NOTCH } from "../design/tokens";
 import { GearIcon } from "./icons/AgentIcon";
 import { useTheme } from "../lib/theme";
@@ -23,8 +23,18 @@ const REST_FRACTION = hintSweep / 360;
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export interface SettingsMorphProps {
-  cx: number;
-  cy: number;
+  /**
+   * Centro del disco. Son los muelles de la silueta, no el destino: el arco de
+   * reposo lo unico que hace es asomar por el borde de la punta, asi que si el
+   * centro va al valor final el boton se despega mientras el notch crece.
+   */
+  cx: MotionValue<number>;
+  cy: MotionValue<number>;
+  /**
+   * Giro de la columna. Lo descuenta el glifo y nada mas: el arco tiene que
+   * girar CON la silueta o deja de trazar su borde y queda flotando al lado.
+   */
+  angle: number;
   open: boolean;
   onHoverStart: () => void;
   onHoverEnd: () => void;
@@ -36,8 +46,11 @@ export interface SettingsMorphProps {
  * del reposo y el disco lleno del hover son el mismo trazo, engordando hacia
  * dentro mientras el guion barre hasta cerrar la vuelta. Por eso se anima un
  * solo escalar y de ahi salen radio, grosor y guion.
+ *
+ * Todo se dibuja en el origen y es el grupo el que se lleva al centro: asi el
+ * centro puede ser un muelle sin repetirlo en cada atributo.
  */
-export function SettingsMorph({ cx, cy, open, onHoverStart, onHoverEnd, onClick }: SettingsMorphProps) {
+export function SettingsMorph({ cx, cy, angle, open, onHoverStart, onHoverEnd, onClick }: SettingsMorphProps) {
   const { colors } = useTheme();
   const progress = useSpring(open ? 1 : 0, { stiffness: 380, damping: 34, mass: 0.7 });
   useEffect(() => {
@@ -52,18 +65,18 @@ export function SettingsMorph({ cx, cy, open, onHoverStart, onHoverEnd, onClick 
   });
 
   return (
-    <g
+    <motion.g
+      style={{ x: cx, y: cy, cursor: "pointer" }}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
       onClick={onClick}
-      style={{ cursor: "pointer" }}
     >
       {/* Area de agarre: el arco mide 4.5 px, hace falta el pie del disco entero. */}
-      <circle cx={cx} cy={cy} r={R_DISC} fill="transparent" pointerEvents="all" />
+      <circle cx={0} cy={0} r={R_DISC} fill="transparent" pointerEvents="all" />
 
       <motion.circle
-        cx={cx}
-        cy={cy}
+        cx={0}
+        cy={0}
         r={radius}
         fill="none"
         stroke={colors.surface}
@@ -71,25 +84,28 @@ export function SettingsMorph({ cx, cy, open, onHoverStart, onHoverEnd, onClick 
         strokeLinecap="round"
         strokeDasharray={dash}
         // El guion arranca a las 12; se gira para que el arco caiga donde la
-        // referencia lo pone.
-        transform={`rotate(${-90 + hintStart} ${cx} ${cy})`}
+        // referencia lo pone, que es asomando por el borde de la punta.
+        transform={`rotate(${-90 + hintStart})`}
         pointerEvents="none"
       />
 
-      <motion.g
-        initial={false}
-        animate={{ opacity: open ? 1 : 0, scale: open ? 1 : 0.55 }}
-        transition={{ type: "spring", stiffness: 420, damping: 30 }}
-        style={{ transformBox: "fill-box", transformOrigin: "center" }}
-        pointerEvents="none"
-      >
-        <GearIcon
-          size={NOTCH.gear.icon}
-          color={colors.icon}
-          x={cx - NOTCH.gear.icon / 2}
-          y={cy - NOTCH.gear.icon / 2}
-        />
-      </motion.g>
-    </g>
+      {/* El glifo si se endereza: es lo unico que hay que poder leer. */}
+      <g transform={angle ? `rotate(${-angle})` : undefined}>
+        <motion.g
+          initial={false}
+          animate={{ opacity: open ? 1 : 0, scale: open ? 1 : 0.55 }}
+          transition={{ type: "spring", stiffness: 420, damping: 30 }}
+          style={{ transformBox: "fill-box", transformOrigin: "center" }}
+          pointerEvents="none"
+        >
+          <GearIcon
+            size={NOTCH.gear.icon}
+            color={colors.icon}
+            x={-NOTCH.gear.icon / 2}
+            y={-NOTCH.gear.icon / 2}
+          />
+        </motion.g>
+      </g>
+    </motion.g>
   );
 }

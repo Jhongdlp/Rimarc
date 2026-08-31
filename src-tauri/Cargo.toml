@@ -1,6 +1,6 @@
 [package]
 name = "rimarc"
-version = "0.1.0"
+version = "0.2.0"
 description = "Native desktop Dynamic Island for AI Agent session monitoring"
 authors = ["Jhon"]
 edition = "2021"
