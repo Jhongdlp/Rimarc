@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { NOTCH, COLOR, MOTION, SETTINGS_HEIGHT, STAGE, accentFor } from "../design/tokens";
+import { NOTCH, MOTION, SETTINGS_HEIGHT, STAGE, agentColor, type ThemeColors } from "../design/tokens";
 import { notchHeight, ringCenterY } from "../lib/notchGeometry";
 import { popoverHeight } from "../lib/popoverPath";
 import { NotchSurface } from "./NotchSurface";
@@ -9,6 +9,7 @@ import { DetailPopover } from "./DetailPopover";
 import { SettingsPanel } from "./SettingsPanel";
 import { useInputShape } from "../hooks/useInputShape";
 import { useAutoHide } from "../lib/prefs";
+import { useTheme } from "../lib/theme";
 import type { AgentSession } from "../types";
 
 /** Con 5 agentes el notch mas el boton ya rozan los 600 px de la ventana. */
@@ -21,6 +22,7 @@ export interface NotchBarProps {
 }
 
 export function NotchBar({ sessions }: NotchBarProps) {
+  const { isDark, colors } = useTheme();
   const items = sessions.slice(0, MAX_ITEMS);
 
   // El disparador del boton es la linea de ajustes, no la barra: en la
@@ -107,7 +109,7 @@ export function NotchBar({ sessions }: NotchBarProps) {
           height={height}
           depth={depth}
           gearCenterY={height}
-          dots={items.map((s) => accentFor(s.daily_percent ?? 0))}
+          dots={items.map((s) => agentColor(s.agent_type, isDark))}
           collapsed={collapsed}
           settingsOpen={settings.hovered}
           onSettingsHoverStart={settings.open}
@@ -123,6 +125,7 @@ export function NotchBar({ sessions }: NotchBarProps) {
                   key={session.id}
                   session={session}
                   centerY={ringCenterY(i)}
+                  colors={colors}
                   onHoverStart={() => {
                     setDetailIndex(i);
                     detail.open();
@@ -163,11 +166,13 @@ function useHoverIntent() {
 function AgentSlot({
   session,
   centerY,
+  colors,
   onHoverStart,
   onHoverEnd,
 }: {
   session: AgentSession;
   centerY: number;
+  colors: ThemeColors;
   onHoverStart: () => void;
   onHoverEnd: () => void;
 }) {
@@ -206,7 +211,7 @@ function AgentSlot({
           fontWeight: NOTCH.label.weight,
           letterSpacing: NOTCH.label.tracking,
           lineHeight: 1,
-          color: COLOR.label,
+          color: colors.label,
           fontVariantNumeric: "tabular-nums",
         }}
       >

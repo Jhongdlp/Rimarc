@@ -4,6 +4,8 @@ mod quota;
 mod scanner;
 
 use std::sync::Mutex;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 use models::SystemAgentSummary;
 use scanner::AgentScanner;
@@ -34,11 +36,14 @@ fn configure_linux_window(window: &WebviewWindow) {
     #[cfg(target_os = "linux")]
     {
         if let Ok(gtk_win) = window.gtk_window() {
+            gtk_win.set_type_hint(gdk::WindowTypeHint::Dock);
+            gtk_win.stick();
             gtk_win.set_keep_above(true);
             gtk_win.set_skip_taskbar_hint(true);
             gtk_win.set_skip_pager_hint(true);
             gtk_win.set_decorated(false);
             gtk_win.set_resizable(false);
+            gtk_win.set_role("agent-notch");
         }
     }
 }
@@ -246,6 +251,67 @@ pub fn run() {
                 setup_initial_geometry(&win);
                 let _ = win.show();
             }
+
+            // Crear menú para el icono en la bandeja del sistema (System Tray)
+            let toggle_item = MenuItem::with_id(app, "toggle", "Mostrar / Ocultar Notch", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Salir de Agent Notch", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&toggle_item, &quit_item])?;
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&menu)
+                .tooltip("Agent Notch - Monitor de Agentes")
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    "toggle" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            if let Ok(visible) = window.is_visible() {
+                                if visible {
+                                    let _ = window.hide();
+                                } else {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            if let Ok(visible) = window.is_visible() {
+                                if visible {
+                                    let _ = window.hide();
+                                } else {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                        }
+                    }
+                });
+
+            let icon_bytes = include_bytes!("../icons/128x128.png");
+            if let Ok(tray_icon) = tauri::image::Image::from_bytes(icon_bytes) {
+                tray_builder = tray_builder.icon(tray_icon.clone());
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_icon(tray_icon);
+                }
+            } else if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+
+            let _tray = tray_builder.build(app)?;
+
             // Cuota real de Claude en segundo plano: el escaneo nunca espera a la red.
             quota::spawn_poller();
             Ok(())

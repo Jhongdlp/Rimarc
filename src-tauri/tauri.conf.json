@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AgentNotch",
+  "productName": "Rimarc",
   "version": "0.1.0",
-  "identifier": "com.jhon.agentnotch",
+  "identifier": "com.jhongdlp.rimarc",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Agent Notch",
+        "title": "Rimarc",
         "width": 420,
         "height": 600,
         "resizable": false,
@@ -22,7 +22,9 @@
         "alwaysOnTop": true,
         "shadow": false,
         "skipTaskbar": true,
-        "visible": true
+        "visible": true,
+        "visibleOnAllWorkspaces": true,
+        "hiddenTitle": true
       }
     ],
     "security": {
@@ -38,6 +40,10 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "shortDescription": "Desktop Dynamic Island and real-time AI Agent session monitor",
+    "longDescription": "Rimarc is a native desktop overlay dock for monitoring AI agent sessions and quota in real-time.",
+    "category": "Utility",
+    "copyright": "2026"
   }
 }

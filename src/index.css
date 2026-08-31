@@ -18,7 +18,7 @@
     height: 100%;
     overflow: hidden;
     background: transparent;
-    color-scheme: dark;
+    color-scheme: light dark;
     user-select: none;
     -webkit-user-drag: none;
   }

@@ -1,9 +1,10 @@
-import { POPOVER, COLOR } from "../design/tokens";
+import { POPOVER, agentColor } from "../design/tokens";
 import { popoverHeight } from "../lib/popoverPath";
 import { Popover, PopoverHeader } from "./Popover";
 import { AgentIcon } from "./icons/AgentIcon";
 import { UsageBar } from "./UsageBar";
 import { useI18n, type Strings } from "../lib/i18n";
+import { useTheme } from "../lib/theme";
 import type { AgentSession } from "../types";
 
 const CONTENT_W = POPOVER.width - POPOVER.padX * 2;
@@ -28,6 +29,7 @@ export function DetailPopover({
   onHoverEnd,
 }: DetailPopoverProps) {
   const { t } = useI18n();
+  const { isDark, colors } = useTheme();
   const sections = buildSections(session, t);
 
   return (
@@ -40,7 +42,7 @@ export function DetailPopover({
       onHoverEnd={onHoverEnd}
     >
       <PopoverHeader
-        icon={<AgentIcon type={session.agent_type} size={POPOVER.icon} />}
+        icon={<AgentIcon type={session.agent_type} size={POPOVER.icon} color={colors.icon} />}
         title={t.usage(session.name)}
       />
 
@@ -56,7 +58,11 @@ export function DetailPopover({
                 left: 0,
               }}
             >
-              <UsageBar percent={section.percent} width={CONTENT_W} />
+              <UsageBar
+                percent={section.percent}
+                width={CONTENT_W}
+                color={agentColor(session.agent_type, isDark)}
+              />
             </div>
             <span
               style={{
@@ -67,7 +73,7 @@ export function DetailPopover({
                 fontSize: POPOVER.text.caption,
                 fontWeight: 500,
                 lineHeight: 1,
-                color: COLOR.detailCaption,
+                color: colors.detailCaption,
                 whiteSpace: "nowrap",
               }}
             >
@@ -81,6 +87,7 @@ export function DetailPopover({
 }
 
 function Row({ y, label, value }: { y: number; label: string; value: string }) {
+  const { colors } = useTheme();
   return (
     <div
       style={{
@@ -100,7 +107,7 @@ function Row({ y, label, value }: { y: number; label: string; value: string }) {
         style={{
           fontSize: POPOVER.text.label,
           fontWeight: 600,
-          color: COLOR.detailLabel,
+          color: colors.detailLabel,
           whiteSpace: "nowrap",
         }}
       >
@@ -110,7 +117,7 @@ function Row({ y, label, value }: { y: number; label: string; value: string }) {
         style={{
           fontSize: POPOVER.text.value,
           fontWeight: 500,
-          color: COLOR.detailValue,
+          color: colors.detailValue,
           whiteSpace: "nowrap",
         }}
       >

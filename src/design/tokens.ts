@@ -1,3 +1,5 @@
+import type { AgentType } from "../types";
+
 /**
  * Design tokens medidos sobre la referencia (Captura 2026-08-31).
  *
@@ -188,8 +190,8 @@ export const SETTINGS = {
   control: 24,
   /** Del centro de una etiqueta al centro de la siguiente. */
   rowPitch: 52,
-  /** Filas del panel: idioma y auto-ocultado. */
-  rows: 2,
+  /** Filas del panel: idioma, tema y auto-ocultado. */
+  rows: 3,
 } as const;
 
 /** Alto total del panel de ajustes. */
@@ -200,7 +202,24 @@ export const SETTINGS_HEIGHT =
   SETTINGS.control +
   POPOVER.padBottom;
 
-export const COLOR = {
+export interface ThemeColors {
+  /** Color de fondo de la barra y conchas. */
+  surface: string;
+  /** Track del anillo y barras de consumo. */
+  track: string;
+  /** Etiquetas principales (porcentaje, pastilla activa). */
+  label: string;
+  /** Iconos de agente y engranaje. */
+  icon: string;
+  /** Titulo de cabecera. */
+  title: string;
+  /** Jerarquia del panel de detalle. */
+  detailLabel: string;
+  detailCaption: string;
+  detailValue: string;
+}
+
+export const DARK_COLORS: ThemeColors = {
   /** La barra es negro puro en la referencia (lum media medida < 1). */
   surface: "#000000",
   /** Track del anillo. Meseta de luminancia medida ~50. */
@@ -213,23 +232,77 @@ export const COLOR = {
   detailLabel: "rgba(255,255,255,0.95)",
   detailCaption: "rgba(255,255,255,0.86)",
   detailValue: "rgba(255,255,255,0.55)",
-} as const;
+};
+
+export const LIGHT_COLORS: ThemeColors = {
+  /** La barra es blanco puro en modo claro. */
+  surface: "#FFFFFF",
+  /** Track del anillo en gris claro suave sobre la superficie blanca. */
+  track: "#E5E7EB",
+  /** Etiquetas en negro de alto contraste. */
+  label: "rgba(0,0,0,0.92)",
+  icon: "#000000",
+  /** Jerarquia del panel de detalle en modo claro. */
+  title: "#000000",
+  detailLabel: "rgba(0,0,0,0.92)",
+  detailCaption: "rgba(0,0,0,0.68)",
+  detailValue: "rgba(0,0,0,0.48)",
+};
+
+export function getThemeColors(isDark = true): ThemeColors {
+  return isDark ? DARK_COLORS : LIGHT_COLORS;
+}
+
+export const COLOR = DARK_COLORS;
+
+export const AGENT_COLOR_DARK: Record<AgentType, string> = {
+  claude: "#FF4A14", // Naranja neón original de la referencia
+  antigravity: "#00D2FF", // Azul eléctrico neón
+  opencode: "#F5FF2E", // Amarillo neón de la referencia
+  aider: "#E040FB", // Púrpura neón
+  copilot: "#00F5D4", // Cyan neón
+  unknown: "#E2E8F0",
+};
+
+export const AGENT_COLOR_LIGHT: Record<AgentType, string> = {
+  claude: "#E8440C",
+  antigravity: "#0284C7",
+  opencode: "#D97706",
+  aider: "#A855F7",
+  copilot: "#0D9488",
+  unknown: "#64748B",
+};
+
+export const AGENT_COLOR = AGENT_COLOR_DARK;
+
+export function agentColor(type: AgentType, isDark = true): string {
+  const map = isDark ? AGENT_COLOR_DARK : AGENT_COLOR_LIGHT;
+  return map[type] ?? map.unknown;
+}
 
 /**
- * Acento por severidad de consumo. La referencia usa 21% verde, 52% amarillo
- * y 73% naranja, asi que el color codifica el porcentaje, no el agente.
+ * Acento por severidad de consumo (opcional / fallback).
  * Valores muestreados del pixel de mayor croma de cada arco.
  */
-export const ACCENT = {
+export const ACCENT_DARK = {
   low: "#1DFC9C",
   mid: "#F5FF2E",
   high: "#FF4A14",
 } as const;
 
-export function accentFor(percent: number): string {
-  if (percent >= 70) return ACCENT.high;
-  if (percent >= 40) return ACCENT.mid;
-  return ACCENT.low;
+export const ACCENT_LIGHT = {
+  low: "#10B981",
+  mid: "#D97706",
+  high: "#E8440C",
+} as const;
+
+export const ACCENT = ACCENT_DARK;
+
+export function accentFor(percent: number, isDark = true): string {
+  const acc = isDark ? ACCENT_DARK : ACCENT_LIGHT;
+  if (percent >= 70) return acc.high;
+  if (percent >= 40) return acc.mid;
+  return acc.low;
 }
 
 export const MOTION = {

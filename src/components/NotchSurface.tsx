@@ -1,8 +1,9 @@
 import { useEffect, type ReactNode } from "react";
 import { motion, useSpring, useTransform } from "framer-motion";
-import { NOTCH, COLOR, STAGE, MOTION } from "../design/tokens";
+import { NOTCH, STAGE, MOTION } from "../design/tokens";
 import { notchPath } from "../lib/notchGeometry";
 import { SettingsMorph } from "./SettingsMorph";
+import { useTheme } from "../lib/theme";
 
 export interface NotchSurfaceProps {
   /** Alto objetivo de la silueta. Se interpola con muelle. */
@@ -30,7 +31,7 @@ export interface NotchSurfaceProps {
 const EDGE = NOTCH.depth;
 
 /**
- * Todo el negro del notch vive en este SVG: la silueta y el boton de ajustes.
+ * Todo el fondo del notch vive en este SVG: la silueta y el boton de ajustes.
  * El path se regenera en cada frame a partir del alto y el fondo animados, asi
  * que el morph entre recogido y desplegado es geometrico de verdad. Como la
  * silueta es autosemejante (ver `notchGeometry`), encoger el fondo no deforma
@@ -50,6 +51,7 @@ export function NotchSurface({
   onHoverEnd,
   children,
 }: NotchSurfaceProps) {
+  const { colors } = useTheme();
   const animatedHeight = useSpring(height, MOTION.shape);
   const animatedDepth = useSpring(depth, MOTION.shape);
   useEffect(() => {
@@ -96,7 +98,7 @@ export function NotchSurface({
     >
       <motion.path
         d={d}
-        fill={COLOR.surface}
+        fill={colors.surface}
         style={{ pointerEvents: "auto" }}
         onMouseEnter={onHoverStart}
         onMouseLeave={onHoverEnd}

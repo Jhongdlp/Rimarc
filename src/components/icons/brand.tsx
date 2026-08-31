@@ -13,8 +13,10 @@
  * el logo. Para volver a las marcas de color basta pasar otro `color`.
  */
 
-/** El PNG vive en public/, asi que se referencia por URL absoluta del bundle. */
-export const ANTIGRAVITY_SRC = "/Icons/Google-Antigravity-Icon-White.png";
+/** Los PNGs viven en public/, asi que se referencian por URL absoluta del bundle. */
+export const ANTIGRAVITY_WHITE_SRC = "/Icons/Google-Antigravity-Icon-White.png";
+export const ANTIGRAVITY_BLACK_SRC = "/Icons/Google-Antigravity-Icon-Black.png";
+export const ANTIGRAVITY_SRC = ANTIGRAVITY_WHITE_SRC;
 
 /**
  * Fraccion del lienzo 540x540 que ocupa realmente la marca de Antigravity.
@@ -50,15 +52,18 @@ export function OpenCodeMark({ color }: { color: string }) {
 }
 
 /** Se agranda para que la marca visible, no el lienzo, mida `extent` (en unidades del viewBox). */
-export function AntigravityMark({ extent }: { extent: number }) {
+export function AntigravityMark({ extent, color }: { extent: number; color?: string }) {
   const box = extent / ANTIGRAVITY_FILL;
+  const isBlack = color === "#000000" || color === "black" || color?.startsWith("rgba(0,0,0");
+  const href = isBlack ? ANTIGRAVITY_BLACK_SRC : ANTIGRAVITY_WHITE_SRC;
   return (
     <image
-      href={ANTIGRAVITY_SRC}
+      href={href}
       x={(24 - box) / 2}
       y={(24 - box) / 2}
       width={box}
       height={box}
+      style={isBlack ? { filter: "brightness(0)" } : undefined}
     />
   );
 }

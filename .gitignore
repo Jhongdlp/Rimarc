@@ -1,5 +1,29 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnp/
+.pnp.js
+
+# Build Outputs & Distribution
+dist/
+dist-ssr/
+build/
+out/
+*.local
+
+# Tauri & Rust Artifacts
+src-tauri/target/
+src-tauri/gen/schemas/
+**/target/
+Cargo.lock.backup
+
+# Environment Variables & Secrets
+.env
+.env*.local
+*.env.local
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,18 +31,28 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
 
-# Editor directories and files
+# IDE & Editor Configurations
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+!.vscode/settings.json
+.idea/
+*.sublime-project
+*.sublime-workspace
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.bak
+*.tmp
+*~

@@ -1,9 +1,10 @@
 import { motion } from "framer-motion";
-import { POPOVER, SETTINGS, SETTINGS_HEIGHT, COLOR } from "../design/tokens";
+import { POPOVER, SETTINGS, SETTINGS_HEIGHT, type ThemeColors } from "../design/tokens";
 import { Popover, PopoverHeader } from "./Popover";
 import { GearIcon } from "./icons/AgentIcon";
 import { LANGS, setLang, useI18n } from "../lib/i18n";
 import { AUTO_HIDE_OPTIONS, setAutoHide, useAutoHide } from "../lib/prefs";
+import { useTheme, type ThemeMode } from "../lib/theme";
 
 const CONTENT_W = POPOVER.width - POPOVER.padX * 2;
 
@@ -23,6 +24,7 @@ export interface SettingsPanelProps {
  */
 export function SettingsPanel({ anchorY, notchLeft, open, onHoverStart, onHoverEnd }: SettingsPanelProps) {
   const { lang, t } = useI18n();
+  const { theme, setTheme, colors } = useTheme();
   const autoHide = useAutoHide();
 
   return (
@@ -34,7 +36,7 @@ export function SettingsPanel({ anchorY, notchLeft, open, onHoverStart, onHoverE
       onHoverStart={onHoverStart}
       onHoverEnd={onHoverEnd}
     >
-      <PopoverHeader icon={<GearIcon size={POPOVER.icon} />} title={t.settings} />
+      <PopoverHeader icon={<GearIcon size={POPOVER.icon} color={colors.icon} />} title={t.settings} />
 
       <Row
         index={0}
@@ -42,15 +44,31 @@ export function SettingsPanel({ anchorY, notchLeft, open, onHoverStart, onHoverE
         layoutId="settings-language-pill"
         options={LANGS.map((o) => ({ id: o.id, label: o.label }))}
         selected={lang}
+        colors={colors}
         onSelect={(id) => setLang(id as "es" | "en")}
       />
 
       <Row
         index={1}
+        label={t.theme}
+        layoutId="settings-theme-pill"
+        options={[
+          { id: "light", label: t.themeLight },
+          { id: "dark", label: t.themeDark },
+          { id: "system", label: t.themeSystem },
+        ]}
+        selected={theme}
+        colors={colors}
+        onSelect={(id) => setTheme(id as ThemeMode)}
+      />
+
+      <Row
+        index={2}
         label={t.autoHide}
         layoutId="settings-autohide-pill"
         options={AUTO_HIDE_OPTIONS.map((o) => ({ id: o.id, label: o.label ?? t.pinned }))}
         selected={autoHide.id}
+        colors={colors}
         onSelect={setAutoHide}
       />
     </Popover>
@@ -69,6 +87,7 @@ function Row({
   options,
   selected,
   layoutId,
+  colors,
   onSelect,
 }: {
   index: number;
@@ -76,6 +95,7 @@ function Row({
   options: Option[];
   selected: string;
   layoutId: string;
+  colors: ThemeColors;
   onSelect: (id: string) => void;
 }) {
   const labelY = SETTINGS.labelY + index * SETTINGS.rowPitch;
@@ -91,7 +111,7 @@ function Row({
           fontSize: POPOVER.text.label,
           fontWeight: 600,
           lineHeight: 1,
-          color: COLOR.detailLabel,
+          color: colors.detailLabel,
         }}
       >
         {label}
@@ -105,7 +125,7 @@ function Row({
           width: CONTENT_W,
           height: SETTINGS.control,
           display: "flex",
-          background: COLOR.track,
+          background: colors.track,
           borderRadius: SETTINGS.control / 2,
         }}
       >
@@ -115,6 +135,7 @@ function Row({
             option={option}
             selected={option.id === selected}
             layoutId={layoutId}
+            colors={colors}
             onSelect={onSelect}
           />
         ))}
@@ -128,11 +149,13 @@ function Segment({
   option,
   selected,
   layoutId,
+  colors,
   onSelect,
 }: {
   option: Option;
   selected: boolean;
   layoutId: string;
+  colors: ThemeColors;
   onSelect: (id: string) => void;
 }) {
   return (
@@ -157,7 +180,7 @@ function Segment({
           style={{
             position: "absolute",
             inset: 0,
-            background: COLOR.label,
+            background: colors.label,
             borderRadius: SETTINGS.control / 2,
           }}
         />
@@ -168,7 +191,7 @@ function Segment({
           fontSize: POPOVER.text.caption,
           fontWeight: 600,
           lineHeight: 1,
-          color: selected ? COLOR.surface : COLOR.detailValue,
+          color: selected ? colors.surface : colors.detailValue,
         }}
       >
         {option.label}

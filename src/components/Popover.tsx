@@ -1,7 +1,8 @@
 import { useEffect, type ReactNode } from "react";
 import { motion, useSpring, useTransform } from "framer-motion";
-import { POPOVER, COLOR, FONT_FAMILY, STAGE } from "../design/tokens";
+import { POPOVER, FONT_FAMILY, STAGE } from "../design/tokens";
 import { popoverPath } from "../lib/popoverPath";
+import { useTheme } from "../lib/theme";
 
 export interface PopoverProps {
   /** Y del centro de la cola, en coordenadas del stage. */
@@ -16,7 +17,7 @@ export interface PopoverProps {
 }
 
 /**
- * Concha negra compartida por el panel de detalle y el de ajustes: la silueta
+ * Concha compartida por el panel de detalle y el de ajustes: la silueta
  * (cuerpo mas cola) es un unico path regenerado desde el ancho y el alto
  * animados, asi que al abrirse el cuerpo brota de la punta de la cola en vez de
  * aparecer escalado. El contenido se pinta encima, ya sangrado por `padX`.
@@ -30,6 +31,7 @@ export function Popover({
   onHoverEnd,
   children,
 }: PopoverProps) {
+  const { colors } = useTheme();
   const progress = useSpring(open ? 1 : 0, { stiffness: 300, damping: 32, mass: 0.8 });
   useEffect(() => {
     progress.set(open ? 1 : 0);
@@ -42,7 +44,7 @@ export function Popover({
   const apex = anchorY - top;
 
   /**
-   * Un unico path para las dos cosas: la concha negra y el recorte del
+   * Un unico path para las dos cosas: la concha y el recorte del
    * contenido. El contenido esta maquetado en su posicion final desde el primer
    * frame, asi que sin recortarlo se veian los textos y las barras fuera de la
    * carta mientras la concha todavia venia creciendo por detras. El
@@ -90,7 +92,7 @@ export function Popover({
         viewBox={`0 0 ${svgW} ${height}`}
         style={{ position: "absolute", inset: 0, overflow: "visible" }}
       >
-        <motion.path d={d} fill={COLOR.surface} />
+        <motion.path d={d} fill={colors.surface} />
       </motion.svg>
 
       {/* Comparte caja con el SVG para que el recorte use sus mismas
@@ -128,6 +130,7 @@ function clamp(v: number, lo: number, hi: number): number {
 
 /** Cabecera comun: glifo a la izquierda y titulo, al ritmo de la referencia. */
 export function PopoverHeader({ icon, title }: { icon: ReactNode; title: string }) {
+  const { colors } = useTheme();
   return (
     <div
       style={{
@@ -144,7 +147,7 @@ export function PopoverHeader({ icon, title }: { icon: ReactNode; title: string 
           fontSize: POPOVER.text.title,
           fontWeight: 600,
           lineHeight: 1,
-          color: COLOR.title,
+          color: colors.title,
         }}
       >
         {title}

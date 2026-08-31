@@ -21,6 +21,10 @@ export interface Strings {
   noReset: string;
   settings: string;
   language: string;
+  theme: string;
+  themeLight: string;
+  themeDark: string;
+  themeSystem: string;
   autoHide: string;
   pinned: string;
 }
@@ -36,6 +40,10 @@ const STRINGS: Record<Lang, Strings> = {
     noReset: "Sin ventana de reinicio",
     settings: "Ajustes",
     language: "Idioma",
+    theme: "Tema",
+    themeLight: "Claro",
+    themeDark: "Oscuro",
+    themeSystem: "Sistema",
     autoHide: "Ocultar tras",
     pinned: "Fijo",
   },
@@ -49,6 +57,10 @@ const STRINGS: Record<Lang, Strings> = {
     noReset: "No reset window",
     settings: "Settings",
     language: "Language",
+    theme: "Theme",
+    themeLight: "Light",
+    themeDark: "Dark",
+    themeSystem: "System",
     autoHide: "Hide after",
     pinned: "Pinned",
   },

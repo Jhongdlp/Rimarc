@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { motion, useSpring, useTransform } from "framer-motion";
-import { NOTCH, COLOR } from "../design/tokens";
+import { NOTCH } from "../design/tokens";
 import { GearIcon } from "./icons/AgentIcon";
+import { useTheme } from "../lib/theme";
 
 const R_DISC = NOTCH.gear.size / 2;
 const { hintStroke, hintStart, hintSweep } = NOTCH.gear;
@@ -37,6 +38,7 @@ export interface SettingsMorphProps {
  * solo escalar y de ahi salen radio, grosor y guion.
  */
 export function SettingsMorph({ cx, cy, open, onHoverStart, onHoverEnd, onClick }: SettingsMorphProps) {
+  const { colors } = useTheme();
   const progress = useSpring(open ? 1 : 0, { stiffness: 380, damping: 34, mass: 0.7 });
   useEffect(() => {
     progress.set(open ? 1 : 0);
@@ -64,7 +66,7 @@ export function SettingsMorph({ cx, cy, open, onHoverStart, onHoverEnd, onClick 
         cy={cy}
         r={radius}
         fill="none"
-        stroke={COLOR.surface}
+        stroke={colors.surface}
         strokeWidth={width}
         strokeLinecap="round"
         strokeDasharray={dash}
@@ -83,7 +85,7 @@ export function SettingsMorph({ cx, cy, open, onHoverStart, onHoverEnd, onClick 
       >
         <GearIcon
           size={NOTCH.gear.icon}
-          color={COLOR.icon}
+          color={colors.icon}
           x={cx - NOTCH.gear.icon / 2}
           y={cy - NOTCH.gear.icon / 2}
         />

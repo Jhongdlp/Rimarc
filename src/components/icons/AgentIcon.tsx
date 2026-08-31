@@ -51,7 +51,7 @@ function glyph(type: AgentType, color: string) {
     case "opencode":
       return <OpenCodeMark color={color} />;
     case "antigravity":
-      return <AntigravityMark extent={BOX} />;
+      return <AntigravityMark extent={BOX} color={color} />;
     case "aider":
       return <Caret color={color} />;
     case "copilot":

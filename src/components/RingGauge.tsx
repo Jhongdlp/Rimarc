@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
-import { NOTCH, COLOR, accentFor } from "../design/tokens";
+import { NOTCH, agentColor } from "../design/tokens";
 import { AgentIcon } from "./icons/AgentIcon";
+import { useTheme } from "../lib/theme";
 import type { AgentType } from "../types";
 
 const { size, stroke, icon } = NOTCH.ring;
@@ -14,13 +15,13 @@ export interface RingGaugeProps {
 }
 
 /**
- * Anillo de consumo. Track y progreso comparten radio y grosor: en la
- * referencia la meseta de luminancia del track y la del arco de color caen
- * exactamente en el mismo rango radial.
+ * Anillo de consumo. El color del arco corresponde a la identidad visual de
+ * cada agente (Claude: naranja, Antigravity: azul, OpenCode: amarillo, etc.).
  */
 export function RingGauge({ type, percent }: RingGaugeProps) {
+  const { isDark, colors } = useTheme();
   const clamped = Math.max(0, Math.min(100, percent));
-  const accent = accentFor(clamped);
+  const accent = agentColor(type, isDark);
 
   return (
     <div style={{ position: "relative", width: size, height: size }}>
@@ -31,7 +32,7 @@ export function RingGauge({ type, percent }: RingGaugeProps) {
             cy={size / 2}
             r={RADIUS}
             fill="none"
-            stroke={COLOR.track}
+            stroke={colors.track}
             strokeWidth={stroke}
           />
           <motion.circle
@@ -57,7 +58,7 @@ export function RingGauge({ type, percent }: RingGaugeProps) {
           placeItems: "center",
         }}
       >
-        <AgentIcon type={type} size={icon} color={COLOR.icon} />
+        <AgentIcon type={type} size={icon} color={colors.icon} />
       </div>
     </div>
   );
