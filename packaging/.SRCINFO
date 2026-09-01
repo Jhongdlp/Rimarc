@@ -1,0 +1,16 @@
+pkgbase = rimarc-bin
+	pkgdesc = Native desktop Dynamic Island and Dock for real-time AI Agent session monitoring
+	pkgver = 0.3.0
+	pkgrel = 1
+	url = https://github.com/Jhongdlp/Rimarc
+	arch = x86_64
+	license = MIT
+	depends = webkit2gtk-4.1
+	depends = libayatana-appindicator
+	depends = librsvg
+	provides = rimarc
+	conflicts = rimarc
+	source = rimarc-bin-0.3.0.tar.gz::https://github.com/Jhongdlp/Rimarc/releases/download/v0.3.0/Rimarc_0.3.0_x86_64.tar.gz
+	sha256sums = ebf36f1006e5eb40d9c74ecfe181511e92ba7e78e9852d40d66d7a1c763ec724
+
+pkgname = rimarc-bin
