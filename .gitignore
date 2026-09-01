@@ -62,3 +62,4 @@ desktop.ini
 packaging/src/
 packaging/pkg/
 packaging/*.tar.gz
+packaging/aur/
