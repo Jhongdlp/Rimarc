@@ -15,7 +15,7 @@ export const THEME_OPTIONS: { id: ThemeMode }[] = [
 
 function read(): ThemeMode {
   const saved = localStorage.getItem(KEY);
-  if (saved === "light" || saved === "dark" || saved === "system") return saved;
+  if (THEME_OPTIONS.some((o) => o.id === saved)) return saved as ThemeMode;
   return DEFAULT_THEME;
 }
 

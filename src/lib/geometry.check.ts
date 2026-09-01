@@ -13,7 +13,7 @@
  * Y de paso que el notch alcance las dos puntas del borde, que es lo que no
  * hacia cuando la ventana medida 600 px en vez del borde entero.
  */
-import { NOTCH, POPOVER } from "../design/tokens.ts";
+import { MAX_ITEMS, NOTCH, POPOVER, STAGE, drawerHeight } from "../design/tokens.ts";
 import { alongFor, anchorFor, columnTransform, isHorizontal, type Edge, type Stage } from "./placement.ts";
 import { popoverPath } from "./popoverPath.ts";
 
@@ -43,14 +43,14 @@ const H = 200; // alto de contenido cualquiera
 const W = POPOVER.width;
 const TAIL = POPOVER.tail.length;
 
-// Pantalla de 1920x1080 con la ventana metida 420 px desde el borde.
+// Pantalla de 1920x1080 con la ventana metida STAGE.width px desde el borde.
 const SCREEN = { w: 1920, h: 1080 };
 const NOTCH_LEN = 300;
 const RING = 120; // un anillo cualquiera dentro de la barra
 
 for (const edge of ["right", "left", "top", "bottom"] as Edge[]) {
   const horiz = isHorizontal(edge);
-  const stage: Stage = { along: horiz ? SCREEN.w : SCREEN.h, depth: 420 };
+  const stage: Stage = { along: horiz ? SCREEN.w : SCREEN.h, depth: STAGE.width };
 
   // Barra a media pantalla y anillo dentro de ella: lejos de todos los topes.
   const slid = alongFor(0.5, stage, NOTCH_LEN);
@@ -106,7 +106,35 @@ for (const edge of ["right", "left", "top", "bottom"] as Edge[]) {
     `${edge}: punta en ${tip}, se esperaba ${want}`,
   );
 
-  // 3. El notch tiene que poder llegar a las dos puntas del borde.
+  // 3. El cajon de detalle, que sobresale de la carta, tiene que caber en la
+  //    ventana y no meterse en la columna del notch.
+  // El peor caso: el cajon con todos los agentes que caben en la barra.
+  const DH = drawerHeight(MAX_ITEMS);
+  const rot = ROT[a.dir];
+  const [bleedL, bleedR] =
+    rot === 0
+      ? [POPOVER.drawer.bleed, 0]
+      : rot === 180
+        ? [0, POPOVER.drawer.bleed]
+        : [POPOVER.drawer.bleed / 2, POPOVER.drawer.bleed / 2];
+  const bodyX = rot === 180 ? TAIL : 0;
+  const bodyY = rot === 270 ? TAIL : 0;
+  const box = {
+    x0: left + bodyX - bleedL,
+    x1: left + bodyX + W + bleedR,
+    y0: top + (rot === 90 ? bodyY - DH : bodyY + H - POPOVER.drawer.overlap),
+    y1: top + (rot === 90 ? bodyY + POPOVER.drawer.overlap : bodyY + H + DH),
+  };
+  const [near, far] = sideways ? [box.x0, box.x1] : [box.y0, box.y1];
+  assert(near >= 0 && far <= stage.depth, `${edge}: el cajon se sale de la ventana (${near}..${far})`);
+  // La banda del notch, medida desde el borde de pantalla que le toca.
+  const notchBand = a.inner === NOTCH.depth ? [0, NOTCH.depth] : [stage.depth - NOTCH.depth, stage.depth];
+  assert(
+    far <= notchBand[0] || near >= notchBand[1],
+    `${edge}: el cajon pisa la barra (${near}..${far} contra ${notchBand})`,
+  );
+
+  // 4. El notch tiene que poder llegar a las dos puntas del borde.
   assert(alongFor(0, stage, NOTCH_LEN) === 0, `${edge}: no llega al principio del borde`);
   assert(
     Math.abs(alongFor(1, stage, NOTCH_LEN) - (stage.along - NOTCH_LEN)) < 0.001,

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { AgentStatus } from "../types";
 
 export type Lang = "es" | "en";
 
@@ -28,6 +29,8 @@ export interface Strings {
   autoHide: string;
   pinned: string;
   position: string;
+  details: string;
+  status: Record<AgentStatus, string>;
 }
 
 const STRINGS: Record<Lang, Strings> = {
@@ -48,6 +51,14 @@ const STRINGS: Record<Lang, Strings> = {
     autoHide: "Ocultar tras",
     pinned: "Fijo",
     position: "Posicion",
+    details: "Detalles",
+    status: {
+      running: "Ejecutando",
+      thinking: "Pensando",
+      waitinginput: "Esperando entrada",
+      idle: "Inactivo",
+      toolexecuting: "Usando herramienta",
+    },
   },
   en: {
     usage: (agent: string) => `${agent} Usage`,
@@ -66,6 +77,14 @@ const STRINGS: Record<Lang, Strings> = {
     autoHide: "Hide after",
     pinned: "Pinned",
     position: "Position",
+    details: "Details",
+    status: {
+      running: "Running",
+      thinking: "Thinking",
+      waitinginput: "Waiting for input",
+      idle: "Idle",
+      toolexecuting: "Running tool",
+    },
   },
 };
 

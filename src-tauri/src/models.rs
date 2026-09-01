@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 pub enum AgentType {
     Claude,
+    Codex,
     Antigravity,
     OpenCode,
     Aider,

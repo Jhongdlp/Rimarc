@@ -1,6 +1,6 @@
 import type { AgentType } from "../../types";
 import { rosettePath } from "./shapes";
-import { ClaudeMark, OpenCodeMark, AntigravityMark } from "./brand";
+import { ClaudeMark, OpenAIMark, OpenCodeMark, AntigravityMark } from "./brand";
 
 /**
  * Glifo de agente sobre un lienzo de 24x24, escalado por el consumidor.
@@ -48,6 +48,8 @@ function glyph(type: AgentType, color: string) {
   switch (type) {
     case "claude":
       return <ClaudeMark color={color} />;
+    case "codex":
+      return <OpenAIMark color={color} />;
     case "opencode":
       return <OpenCodeMark color={color} />;
     case "antigravity":

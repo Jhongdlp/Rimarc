@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { NOTCH, MOTION, SETTINGS_HEIGHT, STAGE, agentColor, type ThemeColors } from "../design/tokens";
+import {
+  MAX_ITEMS,
+  MOTION,
+  NOTCH,
+  SETTINGS_HEIGHT,
+  STAGE,
+  agentColor,
+  type ThemeColors,
+} from "../design/tokens";
 import { notchHeight, ringCenterY } from "../lib/notchGeometry";
 import { popoverHeight } from "../lib/popoverPath";
 import { NotchSurface } from "./NotchSurface";
@@ -25,9 +33,6 @@ import { call } from "../lib/tauri";
 import { useAutoHide } from "../lib/prefs";
 import { useTheme } from "../lib/theme";
 import type { AgentSession } from "../types";
-
-/** Con 5 agentes el notch mas el boton ya rozan los 600 px de lienzo. */
-export const MAX_ITEMS = 5;
 
 /** Fraccion del camino que recorre el notch por fotograma al arrastrar. */
 const DRAG_EASE = 0.2;
@@ -85,9 +90,13 @@ export function NotchBar({ sessions }: { sessions: AgentSession[] }) {
     return () => window.clearTimeout(id);
   }, [pinned, busy, autoHide.delay]);
 
+  // Sin agentes el recogido es la astilla dormida, no el peek con puntos: no
+  // hay puntos que ensenar y el notch tiene que estorbar lo minimo.
+  const empty = items.length === 0;
   const collapsed = !expanded;
-  const height = collapsed ? NOTCH.peek.height : notchHeight(items.length);
-  const depth = collapsed ? NOTCH.peek.depth : NOTCH.depth;
+  const peek = empty ? NOTCH.dormant : NOTCH.peek;
+  const height = collapsed ? peek.height : notchHeight(items.length);
+  const depth = collapsed ? peek.depth : NOTCH.depth;
 
   // Sitio del notch dentro del borde. Se guarda como fraccion y no como pixeles
   // para que no se descoloque al cambiar de pantalla ni al crecer la barra.
@@ -102,7 +111,9 @@ export function NotchBar({ sessions }: { sessions: AgentSession[] }) {
   const settingsBottom = settingsOpen ? height + SETTINGS_HEIGHT / 2 : 0;
   useInputShape(
     shapeMode,
-    Math.max(height + NOTCH.gear.size / 2, detailBottom, settingsBottom),
+    // Recogido no hay boton, asi que la region es la silueta y nada mas: con la
+    // astilla dormida ese margen de sobra era una franja muerta de 40 px.
+    collapsed ? height : Math.max(height + NOTCH.gear.size / 2, detailBottom, settingsBottom),
     edge,
     // Expandido cubre la ventana entera: mandar el sitio del notch en cada
     // fotograma del arrastre seria una llamada por fotograma para nada.
@@ -113,7 +124,8 @@ export function NotchBar({ sessions }: { sessions: AgentSession[] }) {
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {active && (
         <DetailPopover
-          session={active}
+          sessions={items}
+          index={detailIndex}
           anchor={anchorFor(edge, along + ringCenterY(detailIndex), stage)}
           open={detailOpen}
           onHoverStart={detail.open}
@@ -148,6 +160,7 @@ export function NotchBar({ sessions }: { sessions: AgentSession[] }) {
           dots={items.map((s) => agentColor(s.agent_type, isDark))}
           angle={angle}
           collapsed={collapsed}
+          empty={empty}
           settingsOpen={settings.hovered}
           onSettingsHoverStart={settings.open}
           onSettingsHoverEnd={settings.close}

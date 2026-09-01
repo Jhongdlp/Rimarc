@@ -22,7 +22,7 @@ pnpm clean          # pkill the stale debug binary if a run is wedged
 
 There are no tests, linter, or formatter configured. Type checking is `tsc` via `pnpm build`; Rust checking is `cargo check --manifest-path src-tauri/Cargo.toml`.
 
-Only one instance may run: `main.rs::cleanup_stale_instances` writes `$TMPDIR/notch_agent_app.pid` at startup and `kill`s any previous PID whose `/proc/<pid>/cmdline` matches `tauri-app`/`agentnotch`. A crashed instance can leave a stale window around — `pnpm clean` before restarting.
+Only one instance may run: `main.rs::cleanup_stale_instances` writes `$TMPDIR/notch_agent_app.pid` at startup and `kill`s any previous PID whose `/proc/<pid>/cmdline` matches `rimarc`/`tauri-app`/`agentnotch`. A crashed instance can leave a stale window around — `pnpm clean` before restarting.
 
 ## Architecture
 
@@ -32,8 +32,8 @@ Rust (`src-tauri/src/`) owns process scanning, transcript parsing, and window ge
 
 - `main.rs` — stale-instance cleanup + Linux env fixes (`WEBKIT_DISABLE_DMABUF_RENDERER=1`; forces `GDK_BACKEND=x11` under Wayland so KWin honors exact edge positioning). Then calls `lib.rs::run`.
 - `lib.rs` — Tauri builder, `AppState { scanner: Mutex<AgentScanner> }`, all `#[tauri::command]`s, and the Linux GTK/cairo window code.
-- `scanner.rs` — `AgentScanner::scan()` walks `sysinfo` processes, identifies agents by name/cmdline, resolves cwd via `/proc/<pid>/cwd`, dedupes by `(agent_type, cwd)`, and merges in parsed usage metrics.
-- `parser.rs` — reads agent transcript files off disk and produces `UsageMetrics`.
+- `scanner.rs` — `AgentScanner::scan()` walks `sysinfo` processes, identifies agents by name/cmdline, resolves cwd via `/proc/<pid>/cwd`, keeps **one session per `agent_type`** (the busiest process; ties go to the lowest pid, so the pick doesn't flicker between scans), and merges in parsed usage metrics.
+- `parser.rs` — un parser por agente, todos devolviendo `UsageMetrics` (ver *Usage metrics*).
 - `quota.rs` — sondeo de la cuota real de Claude (ver abajo).
 - `models.rs` — `AgentSession` / `SystemAgentSummary`, serde-serialized to the frontend. **`src/types.ts` mirrors these by hand — change both together.** Enums are `#[serde(rename_all = "lowercase")]`, so `AgentStatus::WaitingInput` crosses the wire as `"waitinginput"`.
 
@@ -41,7 +41,7 @@ Commands: `scan_agents`, `set_notch_mode`, `place_notch`, `drag_probe`, `open_in
 
 ### The window covers a whole screen edge
 
-The window is flush against one screen edge, spans it end to end, and reaches `STAGE_DEPTH` (420 px) inwards — most of that depth is transparent room for the popover to open into. It only ever moves or resizes when the notch changes edge; sliding the notch *along* an edge is a CSS transform inside a window that never moves. (It used to be a fixed 600 px window with the notch pinned to its origin, which put half of every edge out of reach.)
+The window is flush against one screen edge, spans it end to end, and reaches `STAGE_DEPTH` (560 px) inwards — most of that depth is transparent room for the popover to open into. It only ever moves or resizes when the notch changes edge; sliding the notch *along* an edge is a CSS transform inside a window that never moves. (It used to be a fixed 600 px window with the notch pinned to its origin, which put half of every edge out of reach.)
 
 ### The input shape is the whole trick
 
@@ -69,7 +69,23 @@ The front is written *once*, for a notch on the right edge growing downwards. Th
 - Only what has to *read* takes the inverse rotation: the ring gauge, the `%` label, and the gear glyph (`angle` prop). The layout itself is untouched, so on a horizontal edge the label ends up beside its ring instead of under it. **The settings arc is not in that list** — in rest it is just the sliver of the disc poking past the silhouette's tip, so it has to keep rotating *with* the silhouette or it detaches and floats beside the notch. Its centre rides `animatedHeight`/`animatedDepth`, not the target height, for the same reason: on the target it drifts off the tip while the notch is growing.
 - `popoverPath` takes the same `rot` and maps its points, so the popover shell keeps its upright body with the tail on whichever side the notch is. For ±90 the caller passes `bodyW`/`bodyH` swapped — see `Popover`.
 
-`pnpm check:geometry` asserts, on all four edges, that `anchorFor` agrees with where `columnTransform` actually puts the ring, that the popover tail lands on it, and that the notch reaches both ends of its edge. Run it after touching `popoverPath`, `placement`, or `Popover`.
+`pnpm check:geometry` asserts, on all four edges, that `anchorFor` agrees with where `columnTransform` actually puts the ring, that the popover tail lands on it, that the detail drawer still fits in the window without covering the bar, and that the notch reaches both ends of its edge. Run it after touching `popoverPath`, `placement`, or `Popover`.
+
+The detail card grows a **drawer**: a wider rounded box that shares the card's
+surface, tucked `POPOVER.drawer.overlap` px behind its base so the two read as
+one silhouette (no path surgery — the growth is an animated `inset()`). It opens
+on hovering the chevron at the foot of the card and holds the **roster**: one
+row per live agent — glyph, project, what it is running right now, and its daily
+bar, which doubles as the row separator. Hovering a row swaps what the card
+counts but *not* where the tail points: re-anchoring would slide the panel out
+from under the pointer, so `DetailPopover` keeps its own `shown` index over the
+`index` prop that the ring hover sets.
+
+The drawer bleeds sideways *away from the tail*, and on a bottom-edge notch it
+grows upwards instead of down, or it would end up under the bar. `STAGE_DEPTH`
+has to stay deep enough for notch + gap + tail + card + a drawer with
+`MAX_ITEMS` rows on a horizontal edge — that is what pushed it to 560, and
+`check:geometry` asserts it.
 
 ### Frontend state machine
 
@@ -87,32 +103,93 @@ The notch silhouette is a hand-built bezier string from `notchPath(w, h, isPeek,
 
 Settings live in `localStorage` under `agent_notch_settings_v1` (`src/settings.ts`), never in Rust. `loadSettings()` deep-merges over `DEFAULT_SETTINGS` per section, so adding a new settings key is backwards-compatible.
 
-### Usage metrics: cuota real para Claude, estimación para el resto
+### Usage metrics: una fuente distinta por agente
 
-Claude Code **no** guarda su cuota en disco, y los transcripts sólo tienen tokens por turno. La cuota real sale del mismo endpoint que usa `/usage`:
+Cada agente guarda su uso en un sitio y un formato distinto, y solo dos de ellos
+publican la **cuota real**. `quota_live` viaja al front para distinguirlos: `true`
+= porcentaje real de la cuenta, `false` = estimacion local, que el popover pinta
+como `~N tokens` en vez de un porcentaje duro.
 
-- `quota.rs` — hilo en segundo plano que cada 60 s hace `GET https://api.anthropic.com/api/oauth/usage` con el `claudeAiOauth.accessToken` de `~/.claude/.credentials.json` (header `anthropic-beta: oauth-2025-04-20`). Devuelve `five_hour.utilization`, `seven_day.utilization` y sus `resets_at`. Se guarda en un `OnceLock<Mutex<Option<ClaudeQuota>>>` que `scan_agents` lee sin bloquear. Si no hay token válido, red, o `curl`, la cuota queda en `None` y `quota_live` viaja como `false`.
-- La llamada usa `curl` a propósito: el `reqwest` que arrastra Tauri viene sin backend TLS, y habilitarlo mete rustls entero en el árbol.
+| agente | fuente | cuota |
+|---|---|---|
+| Claude | `~/.claude/projects/<cwd>/*.jsonl` + `api/oauth/usage` | real |
+| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | real, en el propio transcript |
+| OpenCode | `~/.local/share/opencode/opencode.db` (SQLite) | estimada |
+| Antigravity | `~/.gemini/antigravity-cli/brain/*/…/transcript.jsonl` | estimada |
 
-`parser.rs` sólo se ocupa de la **sesión activa**, ya no recorre los 287 MB de `~/.claude/projects`:
+**Claude.** `quota.rs` es un hilo que cada 300 s hace `GET
+https://api.anthropic.com/api/oauth/usage` con el `claudeAiOauth.accessToken` de
+`~/.claude/.credentials.json` (header `anthropic-beta: oauth-2025-04-20`) y deja
+`five_hour.utilization` / `seven_day.utilization` en un `OnceLock<Mutex<…>>` que
+`scan_agents` lee sin bloquear. **Ese endpoint da 429 con facilidad** — lo
+comparte con el propio Claude Code y con cada arranque de la app — y un fallo
+dejaba los dos anillos a 0 %: la ultima respuesta buena se guarda en crudo en
+`$TMPDIR/notch_agent_quota.json` y `spawn_poller` la carga antes de salir a la
+red, asi que un arranque con 429 pinta la cuota de hace un rato en vez de cero.
+Se descarta si su `five_hour.resets_at` ya paso (ventana reiniciada = el
+porcentaje viejo no dice nada). El primer fallo reintenta a los 30 s y a partir
+de ahi dobla hasta 1800 s. Los transcripts solo dan tokens y coste:
+`parser.rs` lee el `.jsonl` mas reciente de forma **incremental**
+(`SessionAccum.offset`, cortando en el ultimo `\n`), suma los cuatro buckets de
+`message.usage` — ignorar los de cache era lo que dejaba las cifras ~10x bajas —
+y deduplica por `message.id` porque Claude Code reescribe la misma respuesta
+varias veces. `context_tokens` **no se suma**: es `input + cache_write +
+cache_read` del ultimo turno.
 
-- Lee el `.jsonl` más reciente del proyecto de forma **incremental** (`SessionAccum.offset`, sólo los bytes nuevos, cortando en el último `\n` para no leer una línea a medio escribir).
-- Suma los cuatro buckets de `message.usage`: `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`. Ignorar los de caché era lo que dejaba las cifras ~10x bajas.
-- Deduplica por `message.id` (o `requestId`): Claude Code reescribe la misma respuesta varias veces.
-- `context_tokens` **no se suma**: es `input + cache_write + cache_read` del último turno, o sea la ocupación real de la ventana.
-- Coste con tarifas por modelo (`rates()`), escritura de caché a 1.25x la entrada y lectura a 0.1x.
+**Codex** es el mas facil: escribe la cuota en su propio rollout. Cada evento
+`payload.type == "token_count"` lleva `rate_limits.primary` (ventana de 5 h) y
+`.secondary` (semanal) con `used_percent` y `resets_in_seconds`, asi que
+`quota_live` sale `true` sin tocar la red. `info.total_token_usage` es
+**acumulado de la sesion**, no incremental: se coge el ultimo evento y ya, aqui
+no se suma nada. `input_tokens` ya incluye los cacheados y `output_tokens` el
+razonamiento — sumarlos aparte cuenta doble. El rollout activo se elige leyendo
+los primeros 8 KB de cada candidato y buscando el `cwd` de su `session_meta`, no
+por mtime: el mas reciente puede ser de otro proyecto. En `codex exec`
+`rate_limits` llega a `null` y entonces `quota_live` se queda en `false`.
 
-**Antigravity** sigue siendo estimación pura (`chars / 4`, ventanas por mtime de fichero) porque no escribe tokens ni cuota en ninguna parte; sale con `quota_live: false` y el popover lo pinta como `~N tokens` en vez de un porcentaje.
+**OpenCode** guarda todo en SQLite y la tabla `session` ya trae los totales
+(`cost`, `tokens_input/output/reasoning/cache_read/cache_write`, `model`,
+`directory`), asi que no hay transcript que recorrer: una sola consulta, con las
+sumas de ventana como subconsultas para no lanzar `sqlite3` mas de una vez por
+escaneo. Se invoca el binario `sqlite3 -readonly` en vez de meter rusqlite en el
+arbol, por el mismo motivo por el que `quota.rs` usa `curl`. La columna `model`
+es un JSON `{"id":…,"providerID":…}`. No hay cuota que consultar (es
+trae-tu-clave), asi que las ventanas son estimaciones contra
+`OPENCODE_5H_LIMIT` / `OPENCODE_WEEKLY_LIMIT`.
 
-Los porcentajes que viajan al front son el **consumo**, no lo restante (`utilization` tal cual). Es lo que espera todo el front: el anillo se llena con el gasto y `accentFor` vira a naranja por encima de 70.
+**Antigravity** no escribe ni un solo contador de tokens ni su cuota en ninguna
+parte, asi que todo es estimacion (`chars / 4`). Dos detalles que no son
+opcionales:
+
+- **Son dos pools independientes.** Antigravity reparte la cuota entre los
+  modelos Gemini y los Claude, y gastar uno no toca el saldo del otro. El modelo
+  de cada conversacion viaja como texto dentro de un `USER_SETTINGS_CHANGE` del
+  transcript (``…`Model Selection` from None to Gemini 3.7 Flash (High). …``),
+  que `model_selection()` extrae. Cada conversacion se acumula en el pool de su
+  familia y solo se reporta el del modelo activo, con sus propios limites
+  (`antigravity_limits`), su ventana de contexto y sus tarifas.
+- **Las ventanas se reparten por `created_at` de cada paso, nunca por el mtime
+  del fichero.** Una conversacion de hace semanas que hoy se abre un momento
+  cambia su mtime; contando por fichero, sus 45k tokens de historia entraban
+  enteros en la ventana de 5 h y pintaban un 8 % de consumo diario sin haber
+  usado el agente. `CachedFileTokens.steps` guarda `(epoch, tokens)` por paso
+  (solo los de los ultimos 7 dias) y las ventanas se suman de ahi. Un paso sin
+  `created_at` no cuenta: no hay forma de ubicarlo. **Tampoco hay rellenos**: si
+  hoy no se ha hablado con esa familia la ventana es 0 y el anillo sale vacio.
+
+Los porcentajes que viajan al front son el **consumo**, no lo restante
+(`utilization` tal cual). Es lo que espera todo el front: el anillo se llena con
+el gasto y `accentFor` vira a naranja por encima de 70.
 
 ## Gotchas
 
 - **Tauri camelCase → snake_case**: `invoke("cmd", { someArg })` binds to a Rust parameter named `some_arg`. `App.tsx`'s `handleOpenTerminal` sends `preferredTerminal` while `open_in_terminal` declares `terminal`, so the preferred-terminal setting is silently dropped today.
 - Hardcoded `/home/jhon` fallbacks appear in `scanner.rs` and `lib.rs` where `dirs::home_dir()` fails.
-- `identify_agent` must keep excluding this app itself (`tauri-app`, `agentnotch`, `target/{debug,release}/tauri-app`) or the notch will list itself as an agent.
+- `identify_agent` must keep excluding this app itself (`rimarc`, plus the old `tauri-app`/`agentnotch` names) or the notch will list itself as an agent.
 - `tsconfig.json` sets `noUnusedLocals`/`noUnusedParameters`, so unused imports break `pnpm build` even though `pnpm dev` is happy.
-- The Rust crate is still named `tauri-app` (Cargo) while the product is `AgentNotch` (`tauri.conf.json`); `pnpm clean` and the PID-cleanup matcher depend on the crate name.
+- El crate de Cargo es `rimarc` y el producto es `Rimarc` (`tauri.conf.json`), pero la lib sigue siendo `tauri_app_lib`; `pnpm clean` y el matcher de PIDs dependen del nombre del binario.
+- Anadir un `AgentType` toca los dos lados: `models.rs`, `src/types.ts`, los dos mapas de `AGENT_COLOR_*` en `src/design/tokens.ts` (son `Record<AgentType, string>` exhaustivos, si falta uno `pnpm build` falla) y el `switch` de `AgentIcon`.
+- `parse_opencode_metrics` depende del binario `sqlite3` en el `PATH`; sin el, las metricas de OpenCode salen a cero en silencio.
 - UI copy is Spanish ("Cuota Diaria", "Límite Semanal", "Sin agentes activos"); match that when adding strings.
 
 ## Styling

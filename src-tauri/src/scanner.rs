@@ -1,8 +1,11 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use sysinfo::{ProcessesToUpdate, System};
 use crate::models::{AgentSession, AgentStatus, AgentType, SystemAgentSummary};
-use crate::parser::{parse_antigravity_metrics, parse_claude_project_metrics, MetricsCache};
+use crate::parser::{
+    parse_antigravity_metrics, parse_claude_project_metrics, parse_codex_metrics,
+    parse_opencode_metrics, MetricsCache,
+};
 
 pub struct AgentScanner {
     sys: System,
@@ -23,8 +26,8 @@ impl AgentScanner {
         self.sys.refresh_processes(ProcessesToUpdate::All, true);
 
         let mut sessions: Vec<AgentSession> = Vec::new();
-        let mut seen_cwds: HashSet<String> = HashSet::new();
         let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home/jhon"));
+        let winners = self.pick_one_pid_per_agent();
 
         for (pid, process) in self.sys.processes() {
             let p_name = process.name().to_string_lossy().to_lowercase();
@@ -46,12 +49,10 @@ impl AgentScanner {
                         .unwrap_or_else(|| home_dir.to_string_lossy().to_string())
                 });
 
-                // Deduplicate multi-process/threads for the same agent in the same folder
-                let dedupe_key = format!("{:?}:{}", agent_type, cwd);
-                if seen_cwds.contains(&dedupe_key) {
+                // Un solo gauge por agente, aunque corra en varias carpetas
+                if winners.get(&format!("{:?}", agent_type)) != Some(&pid_u32) {
                     continue;
                 }
-                seen_cwds.insert(dedupe_key);
 
                 let project_name = Path::new(&cwd)
                     .file_name()
@@ -76,6 +77,16 @@ impl AgentScanner {
                         let project_path = home_dir.join(".claude").join("projects").join(&safe_encoded);
                         parse_claude_project_metrics(&mut self.cache, &project_path)
                     }
+                    AgentType::Codex => {
+                        let sessions = home_dir.join(".codex").join("sessions");
+                        parse_codex_metrics(&sessions, &cwd)
+                    }
+                    AgentType::OpenCode => {
+                        let db = home_dir
+                            .join(".local/share/opencode")
+                            .join("opencode.db");
+                        parse_opencode_metrics(&db, &cwd)
+                    }
                     AgentType::Antigravity => {
                         let app_data = home_dir.join(".gemini").join("antigravity-cli");
                         parse_antigravity_metrics(&mut self.cache, &app_data, &cwd, 700_000, 3_800_000)
@@ -85,10 +96,12 @@ impl AgentScanner {
 
                 let now_str = chrono::Local::now().format("%H:%M:%S").to_string();
 
-                let context_cap = match agent_type {
-                    AgentType::Antigravity => 1_000_000,
-                    AgentType::Claude => 200_000,
-                    _ => 200_000,
+                // Codex y Antigravity publican la ventana del modelo activo;
+                // el resto usa la de su familia.
+                let context_cap = if m.context_window > 0 {
+                    m.context_window
+                } else {
+                    200_000
                 };
                 // Contexto real del ultimo turno; para Antigravity aun no hay dato
                 // por turno, asi que cae al total estimado de la sesion.
@@ -144,14 +157,49 @@ impl AgentScanner {
             timestamp: chrono::Local::now().to_rfc3339(),
         }
     }
+
+    /// Un proceso por tipo de agente: el mas ocupado, y a igualdad de CPU el pid
+    /// mas bajo, para que la eleccion no baile entre escaneos.
+    fn pick_one_pid_per_agent(&self) -> HashMap<String, u32> {
+        let mut best: HashMap<String, (u32, f32)> = HashMap::new();
+        for (pid, process) in self.sys.processes() {
+            let p_name = process.name().to_string_lossy().to_lowercase();
+            let cmd_line = process
+                .cmd()
+                .iter()
+                .map(|s| s.to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            if let Some((agent_type, _)) = identify_agent(&p_name, &cmd_line) {
+                let pid = pid.as_u32();
+                let cpu = process.cpu_usage();
+                let key = format!("{:?}", agent_type);
+                let win = match best.get(&key) {
+                    Some(&(bpid, bcpu)) => cpu > bcpu || (cpu == bcpu && pid < bpid),
+                    None => true,
+                };
+                if win {
+                    best.insert(key, (pid, cpu));
+                }
+            }
+        }
+        best.into_iter().map(|(k, (pid, _))| (k, pid)).collect()
+    }
 }
 
 fn identify_agent(name: &str, cmd: &str) -> Option<(AgentType, String)> {
     let lower_cmd = cmd.to_lowercase();
     let lower_name = name.to_lowercase();
 
-    // Prevent matching self (Notch app)
-    if lower_name == "tauri-app" || lower_name.contains("agentnotch") || lower_cmd.contains("target/debug/tauri-app") || lower_cmd.contains("target/release/tauri-app") {
+    // Prevent matching self. El binario paso a llamarse `rimarc`; los nombres
+    // viejos siguen aqui por si queda una build antigua corriendo.
+    const SELF: [&str; 3] = ["rimarc", "tauri-app", "agentnotch"];
+    if SELF.contains(&lower_name.as_str())
+        || SELF.iter().any(|n| {
+            lower_cmd.contains(&format!("target/debug/{}", n))
+                || lower_cmd.contains(&format!("target/release/{}", n))
+        })
+    {
         return None;
     }
 
@@ -162,6 +210,14 @@ fn identify_agent(name: &str, cmd: &str) -> Option<(AgentType, String)> {
         || (lower_name == "node" && lower_cmd.contains("claude"))
     {
         Some((AgentType::Claude, "Claude Code".to_string()))
+    }
+    // Check Codex CLI (binario nativo o el paquete npm)
+    else if lower_name == "codex"
+        || lower_cmd.contains("@openai/codex")
+        || lower_cmd.contains("/bin/codex")
+        || (lower_name == "node" && lower_cmd.contains("codex"))
+    {
+        Some((AgentType::Codex, "Codex CLI".to_string()))
     }
     // Check Antigravity / Gemini CLI
     else if lower_name == "agy"

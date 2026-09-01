@@ -13,7 +13,9 @@ fn cleanup_stale_instances() {
                 if old_pid != current_pid {
                     let proc_cmdline = PathBuf::from(format!("/proc/{}/cmdline", old_pid));
                     if let Ok(cmd) = fs::read_to_string(&proc_cmdline) {
-                        if cmd.contains("tauri-app") || cmd.contains("agentnotch") {
+                        // El binario se llama `rimarc`; sin el, cada arranque dejaba viva la
+                        // instancia anterior y todas sondeaban la cuota a la vez.
+                        if ["rimarc", "tauri-app", "agentnotch"].iter().any(|n| cmd.contains(n)) {
                             eprintln!("Closing previous instance PID: {}", old_pid);
                             let _ = std::process::Command::new("kill")
                                 .arg(old_pid.to_string())

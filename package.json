@@ -1,7 +1,7 @@
 {
   "name": "rimarc",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:tauri": "NO_STRIP=true tauri build",
-    "clean": "pkill -9 -f 'target/debug/tauri-app' || true"
+    "clean": "pkill -9 -f 'target/debug/rimarc' || true"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

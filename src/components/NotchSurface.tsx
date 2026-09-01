@@ -16,6 +16,8 @@ export interface NotchSurfaceProps {
   angle: number;
   /** true = notch recogido: se ven los puntos y no hay boton de ajustes. */
   collapsed: boolean;
+  /** true = no hay ningun agente vivo: astilla dormida / anillo apagado. */
+  empty: boolean;
   /** true = el arco de reposo ya se abrio en disco. */
   settingsOpen: boolean;
   onSettingsHoverStart: () => void;
@@ -43,6 +45,7 @@ export function NotchSurface({
   dots,
   angle,
   collapsed,
+  empty,
   settingsOpen,
   onSettingsHoverStart,
   onSettingsHoverEnd,
@@ -72,6 +75,7 @@ export function NotchSurface({
   // Los puntos y el boton viven en el eje del cuerpo, que se mueve con el
   // fondo. El boton ademas se ancla a la punta, que se mueve con el alto.
   const dotCx = useTransform(animatedDepth, (w) => EDGE - w / 2);
+  const midY = useTransform(animatedHeight, (h) => h / 2);
 
   // Centrados en la silueta recogida, que es la unica en la que se ven.
   const dotsTop = NOTCH.peek.height / 2 - ((dots.length - 1) * NOTCH.peek.dotPitch) / 2;
@@ -100,10 +104,29 @@ export function NotchSurface({
       <motion.path
         d={d}
         fill={colors.surface}
+        initial={false}
+        animate={{ fillOpacity: collapsed && empty ? NOTCH.dormant.opacity : 1 }}
+        transition={{ duration: 0.2 }}
         style={{ pointerEvents: "auto" }}
         onMouseEnter={onHoverStart}
         onMouseLeave={onHoverEnd}
       />
+
+      {/* Blanco invisible del ancho de la mascara: la astilla dormida es mas
+          estrecha que la region de input y sin esto el puntero entra en la
+          region, no toca el path y el notch no se despliega nunca. */}
+      {collapsed && (
+        <motion.rect
+          x={EDGE - NOTCH.dormant.hit}
+          y={0}
+          width={NOTCH.dormant.hit}
+          height={animatedHeight}
+          fill="transparent"
+          style={{ pointerEvents: "auto" }}
+          onMouseEnter={onHoverStart}
+          onMouseLeave={onHoverEnd}
+        />
+      )}
 
       {dots.map((color, i) => (
         <motion.circle
@@ -118,6 +141,23 @@ export function NotchSurface({
           pointerEvents="none"
         />
       ))}
+
+      {/* Vacio y desplegado: un anillo apagado en el eje del cuerpo. Dice que
+          el notch funciona y que no hay nada que medir, sin texto — en 60 px
+          de ancho no cabe una frase. */}
+      {!collapsed && empty && (
+        <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <motion.circle
+            cx={dotCx}
+            cy={midY}
+            r={NOTCH.idle.radius}
+            fill="none"
+            stroke={colors.track}
+            strokeWidth={NOTCH.idle.stroke}
+          />
+          <motion.circle cx={dotCx} cy={midY} r={NOTCH.idle.dot} fill={colors.track} />
+        </motion.g>
+      )}
 
       {!collapsed && (
         <SettingsMorph

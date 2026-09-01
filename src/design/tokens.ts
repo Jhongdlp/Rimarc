@@ -25,7 +25,7 @@ export const FONT_FAMILY =
  * borde: tiene que dar para `notchHeight(MAX_ITEMS)` mas el boton.
  * 1 unidad = 1 px logico.
  */
-export const STAGE = { width: 420, height: 600 } as const;
+export const STAGE = { width: 560, height: 600 } as const;
 
 export const NOTCH = {
   /** Ancho del cuerpo de la barra. Medido 39.67 -> 60. */
@@ -80,6 +80,21 @@ export const NOTCH = {
   peek: { depth: 26, height: 68, dot: 2, dotPitch: 6.5 },
 
   /**
+   * Estado dormido: recogido y sin ningun agente. Sin puntos que ensenar el
+   * notch no tiene nada que decir, asi que se encoge a una astilla translucida
+   * — casi el filete en S y nada mas. En cuanto aparece un agente vuelve a
+   * `peek` por el mismo muelle que anima la silueta.
+   *
+   * `hit` es lo que se puede senalar aunque no se vea: la mascara de input del
+   * backend es mas profunda que la astilla, y sin un blanco de ese tamano el
+   * puntero cae en la region sin tocar el path y el notch no se despliega.
+   */
+  dormant: { depth: 13, height: 34, opacity: 0.5, hit: 40 },
+
+  /** Marca del notch vacio desplegado: un anillo apagado, sin aguja. */
+  idle: { radius: 8.5, stroke: 2, dot: 2 },
+
+  /**
    * Boton de ajustes, centrado en la punta inferior de la silueta.
    *
    * En reposo no se ve el disco sino solo un arco sobre su borde superior
@@ -125,7 +140,10 @@ export const NOTCH = {
  *
  * El techo lo pone el ancho de la ventana: hueco + cola + panel tienen que
  * caber en `STAGE.width - NOTCH.depth`. Con los 340 px originales el maximo era
- * 1.13, por eso la ventana paso a 420 (ver `WINDOW_WIDTH` en src-tauri).
+ * 1.13, por eso la ventana paso a 420 y luego a 560 (`STAGE_DEPTH` en
+ * src-tauri): en un borde horizontal la carta cuelga del notch y el cajon de
+ * ella, asi que la ventana tiene que dar para notch + hueco + cola + carta +
+ * cajon con los `MAX_ITEMS` agentes. `pnpm check:geometry` lo comprueba.
  */
 const POPOVER_SCALE = 1.25;
 const POPOVER_AIR = 1.15;
@@ -173,6 +191,42 @@ export const POPOVER = {
   barHeight: 5 * POPOVER_SCALE,
 
   /**
+   * Cajon de detalle: crece por debajo de la carta al pasar por su boton. Es
+   * mas ancho que ella y se mete `overlap` px por detras; como comparten
+   * superficie y no hay borde, las dos siluetas se leen como una sola (es el
+   * boceto). Sobresale `bleed` px hacia el lado contrario a la cola — hacia el
+   * otro se comeria el hueco que lo separa del notch. `pnpm check:geometry`
+   * comprueba que lo que sobresale sigue cabiendo en la ventana.
+   */
+  drawer: {
+    bleed: 44,
+    /** No puede bajar del radio de esquina o el canto compartido se estrecha. */
+    overlap: 18 * POPOVER_SCALE,
+    /** Sitio del boton dentro de la carta, medido desde su base. */
+    foot: 15,
+    chevron: 11,
+
+    /**
+     * Una fila por agente vivo: glifo, proyecto y porcentaje arriba, que hace
+     * y donde debajo, y la barra de consumo cerrando la fila de lado a lado.
+     * La barra hace de separador, asi que no hay reglas ni cajas.
+     */
+    rowFirst: 14,
+    rowPitch: 38,
+    rowHeight: 30,
+    /** Del glifo al texto, y alto de la linea de consumo. */
+    icon: 15,
+    iconGap: 8,
+    bar: 2.5,
+    /** Linea de cierre con modelo, contexto y coste del agente elegido. */
+    footer: 18,
+    padBottom: 12,
+    /** Fila sin elegir: presente pero en segundo plano. */
+    dim: 0.45,
+    text: { name: 12.5, meta: 10, value: 11 },
+  },
+
+  /**
    * Tamanos derivados de la altura de mayuscula medida en cada franja:
    * titulo 10.6, etiqueta 8.0, valor 6.8, pie 7.8.
    */
@@ -200,6 +254,17 @@ export const SETTINGS = {
   /** Filas del panel: idioma, tema, auto-ocultado y posicion. */
   rows: 4,
 } as const;
+
+/** Con 5 agentes el notch mas el boton ya rozan los 600 px de lienzo. */
+export const MAX_ITEMS = 5;
+
+/** Alto del cajon de detalle para `n` agentes. */
+export function drawerHeight(n: number): number {
+  const d = POPOVER.drawer;
+  return (
+    d.rowFirst + Math.max(0, n - 1) * d.rowPitch + d.rowHeight + d.footer + d.padBottom
+  );
+}
 
 /** Alto total del panel de ajustes. */
 export const SETTINGS_HEIGHT =
@@ -264,6 +329,7 @@ export const COLOR = DARK_COLORS;
 
 export const AGENT_COLOR_DARK: Record<AgentType, string> = {
   claude: "#FF4A14", // Naranja neón original de la referencia
+  codex: "#FFFFFF", // Blanco de la marca OpenAI
   antigravity: "#00D2FF", // Azul eléctrico neón
   opencode: "#F5FF2E", // Amarillo neón de la referencia
   aider: "#E040FB", // Púrpura neón
@@ -273,6 +339,7 @@ export const AGENT_COLOR_DARK: Record<AgentType, string> = {
 
 export const AGENT_COLOR_LIGHT: Record<AgentType, string> = {
   claude: "#E8440C",
+  codex: "#111827",
   antigravity: "#0284C7",
   opencode: "#D97706",
   aider: "#A855F7",

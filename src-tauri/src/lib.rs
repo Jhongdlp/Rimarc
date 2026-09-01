@@ -21,7 +21,7 @@ use gtk::prelude::*;
 /// notch es sitio para que se despliegue el panel. El otro eje lo cubre entero:
 /// asi el notch puede deslizarse por todo el borde sin mover la ventana, que es
 /// lo que antes lo dejaba fuera de alcance en media pantalla.
-const STAGE_DEPTH: f64 = 420.0;
+const STAGE_DEPTH: f64 = 560.0;
 
 /// Cuanto mas cerca (px logicos) tiene que estar otro borde para que el notch
 /// salte a el. Sin esta banda muerta parpadea entre dos bordes en las
@@ -97,14 +97,33 @@ fn configure_linux_window(window: &WebviewWindow) {
     }
 }
 
+/// Coloca un rectangulo dado en coordenadas locales de la columna — `depth` es
+/// lo que dista del borde de pantalla (de, hasta) y `along` donde cae sobre el
+/// eje largo — dentro de la ventana. Mismo giro por borde que `columnTransform`
+/// en el front: girado 180 (izquierda) o 90 (abajo) el notch corre hacia atras
+/// sobre su eje, de ahi los origenes en el extremo opuesto.
+fn edge_rect(
+    edge: &str,
+    (sw, sh): (f64, f64),
+    (d0, d1): (f64, f64),
+    along: f64,
+    run: f64,
+) -> (f64, f64, f64, f64) {
+    let a = along.max(0.0);
+    let t = d1 - d0;
+    match edge {
+        "left" => (d0, sh - a - run, t, run),
+        "top" => (a, d0, run, t),
+        "bottom" => (sw - a - run, sh - d1, run, t),
+        _ => (sw - d1, a, t, run),
+    }
+}
+
 /// Update X11/Wayland input mask so only the active UI area catches clicks,
 /// and all transparent area passes clicks through to the desktop.
 ///
-/// La region se calcula en coordenadas locales de la columna (profundidad desde
-/// el borde de pantalla, y `along` + largo sobre el eje del borde) y luego se
-/// coloca segun el borde, igual que hace `columnTransform` en el front. Girado
-/// 180 (izquierda) o 90 (abajo) el notch corre hacia atras sobre su eje largo,
-/// de ahi los origenes en el extremo opuesto.
+/// La region se calcula en coordenadas locales de la columna y la coloca
+/// `edge_rect`.
 fn update_input_shape(
     window: &WebviewWindow,
     mode: &str,
@@ -124,17 +143,14 @@ fn update_input_shape(
         let (x, y, w, h) = match mode {
             "peek" | "bar" => {
                 let (depth, run) = if mode == "peek" {
-                    (40.0, 72.0)
+                    // El fondo es fijo (40) porque el recogido puede ser una
+                    // astilla de 13 px y hay que poder senalarla; el largo si
+                    // sigue a la silueta, o dormido quedaria franja muerta.
+                    (40.0, f64::from(height).max(24.0))
                 } else {
                     (80.0, (f64::from(height) + 100.0).max(140.0))
                 };
-                let a = along.max(0.0);
-                match edge {
-                    "left" => (0.0, sh - a - run, depth, run),
-                    "top" => (a, 0.0, run, depth),
-                    "bottom" => (sw - a - run, sh - depth, run, depth),
-                    _ => (sw - depth, a, depth, run),
-                }
+                edge_rect(edge, (sw, sh), (0.0, depth), along, run)
             }
             _ => (0.0, 0.0, sw, sh),
         };
@@ -523,4 +539,21 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// La region de input tiene que caer dentro de la ventana en los cuatro
+    /// bordes; fuera, el notch deja de recibir clicks.
+    #[test]
+    fn input_rect_stays_in_window() {
+        let stage = (420.0, 768.0);
+        for edge in ["right", "left", "top", "bottom"] {
+            let (x, y, w, h) = edge_rect(edge, stage, (0.0, 80.0), 200.0, 140.0);
+            assert!(x >= 0.0 && y >= 0.0, "{edge}: {x},{y}");
+            assert!(x + w <= stage.0 && y + h <= stage.1, "{edge}: {x}+{w},{y}+{h}");
+        }
+    }
 }

@@ -3,6 +3,7 @@
 
 export type AgentType =
   | "claude"
+  | "codex"
   | "antigravity"
   | "opencode"
   | "aider"
