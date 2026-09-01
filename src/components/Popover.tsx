@@ -160,8 +160,11 @@ export function Popover({
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
     >
-      {/* Antes de la concha: la carta tiene que pintarse por encima. */}
-      {drawerHeight > 0 && (
+      {/* Antes de la concha: la carta tiene que pintarse por encima. Solo con la
+          carta abierta: cerrado, el `inset()` que recoge el cajon deja una fila
+          de subpixel sin recortar, y con la carta encima no se ve, pero sin
+          ella era una raya negra de 220 px cruzando el escritorio. */}
+      {drawerHeight > 0 && open && (
         <motion.div
           style={{
             position: "absolute",

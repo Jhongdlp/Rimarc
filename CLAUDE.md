@@ -190,6 +190,7 @@ el gasto y `accentFor` vira a naranja por encima de 70.
 - El crate de Cargo es `rimarc` y el producto es `Rimarc` (`tauri.conf.json`), pero la lib sigue siendo `tauri_app_lib`; `pnpm clean` y el matcher de PIDs dependen del nombre del binario.
 - Anadir un `AgentType` toca los dos lados: `models.rs`, `src/types.ts`, los dos mapas de `AGENT_COLOR_*` en `src/design/tokens.ts` (son `Record<AgentType, string>` exhaustivos, si falta uno `pnpm build` falla) y el `switch` de `AgentIcon`.
 - `parse_opencode_metrics` depende del binario `sqlite3` en el `PATH`; sin el, las metricas de OpenCode salen a cero en silencio.
+- El cajon del `Popover` solo se monta con la carta abierta: recogido, su `inset()` deja una fila de subpixel sin recortar y, sin carta encima que la tape, sale una raya de `surface` de 220 px cruzando el escritorio.
 - UI copy is Spanish ("Cuota Diaria", "Límite Semanal", "Sin agentes activos"); match that when adding strings.
 
 ## Styling
