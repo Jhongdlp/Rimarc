@@ -1,0 +1,17 @@
+# Maintainer: Jhon <catalystsmartflow@gmail.com>
+pkgname=rimarc-bin
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="Native desktop Dynamic Island and Dock for real-time AI Agent session monitoring"
+arch=('x86_64')
+url="https://github.com/Jhongdlp/Rimarc"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'libayatana-appindicator' 'librsvg')
+provides=('rimarc')
+conflicts=('rimarc')
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/Rimarc_${pkgver}_x86_64.tar.gz")
+sha256sums=('e7f0d592e07eebc117b8c77d588c25b308f64881ac359ae2d64f60645b8f0ca6')
+
+package() {
+  cp -a "$srcdir/usr" "$pkgdir/usr"
+}
