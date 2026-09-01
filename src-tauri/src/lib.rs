@@ -4,6 +4,7 @@ mod quota;
 mod scanner;
 
 use std::sync::Mutex;
+use tauri_plugin_updater::UpdaterExt;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
@@ -432,6 +433,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -485,6 +487,29 @@ pub fn run() {
 
             // Cuota real de Claude en segundo plano: el escaneo nunca espera a la red.
             quota::spawn_poller();
+
+            // Actualizacion silenciosa al arrancar. Solo aplica a los bundles que
+            // el updater sabe reemplazar (NSIS/MSI, AppImage, .app); en .deb, .rpm
+            // y pacman `check()` falla y se queda en el log, que es lo correcto:
+            // ahi manda el gestor de paquetes.
+            let updater_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let updater = match updater_app.updater() {
+                    Ok(u) => u,
+                    Err(e) => return eprintln!("[updater] no disponible: {e}"),
+                };
+                match updater.check().await {
+                    Ok(Some(update)) => {
+                        println!("[updater] instalando {}", update.version);
+                        match update.download_and_install(|_, _| {}, || {}).await {
+                            Ok(()) => updater_app.restart(),
+                            Err(e) => eprintln!("[updater] fallo al instalar: {e}"),
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(e) => eprintln!("[updater] no se pudo comprobar: {e}"),
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

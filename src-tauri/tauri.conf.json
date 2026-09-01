@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Rimarc",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "com.jhongdlp.rimarc",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -44,6 +44,15 @@
     "shortDescription": "Desktop Dynamic Island and real-time AI Agent session monitor",
     "longDescription": "Rimarc is a native desktop overlay dock for monitoring AI agent sessions and quota in real-time.",
     "category": "Utility",
-    "copyright": "2026"
+    "copyright": "2026",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk4RDE5RjgyMUU3MTY5MTMKUldRVGFYRWVncC9SbVAwVU1DZTdQN0crQnQrZUNCT1ZVanZ0WjVPMkdEZ09rM082UUx1SHE2KzQK",
+      "endpoints": [
+        "https://github.com/Jhongdlp/Rimarc/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

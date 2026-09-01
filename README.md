@@ -90,7 +90,24 @@ Download ready-to-run packages from the [Releases](https://github.com/Jhongdlp/R
 | Linux (Ubuntu / Debian) | `.deb` | `sudo dpkg -i Rimarc_*_amd64.deb` |
 | Linux (Universal) | `.AppImage` | `chmod +x Rimarc-*.AppImage && ./Rimarc-*.AppImage` |
 | Windows | `.exe` / `.msi` | Standard installer wizard with auto-startup options |
+| Linux (Arch) | `PKGBUILD` | `cd packaging && makepkg -si` |
 | macOS | `.dmg` | Drag to Applications (Apple Silicon & Intel supported) |
+
+### Updates
+
+Rimarc checks for a new release on launch and installs it silently, then restarts.
+This only works for bundles the updater can replace in place:
+
+| Package | Auto-updates | How it updates |
+|---|---|---|
+| Windows `.exe` / `.msi` | Yes | Built in, on launch |
+| Linux `.AppImage` | Yes | Built in, on launch |
+| macOS `.app` | Yes | Built in, on launch |
+| Linux `.deb` / `.rpm` | No | Reinstall the new package by hand |
+| Arch `rimarc-bin` | No | `cd packaging && makepkg -si` |
+
+Distro packages own files under `/usr`, so the app cannot rewrite itself there.
+Use the AppImage if you want a Linux build that keeps itself current.
 
 ---
 
