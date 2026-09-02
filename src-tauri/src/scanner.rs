@@ -112,7 +112,12 @@ impl AgentScanner {
                 };
 
                 sessions.push(AgentSession {
-                    id: format!("{}-{}", pid_u32, name),
+                    // Un gauge por agente y de por vida: la clave no puede llevar
+                    // el pid. El proceso "mas ocupado" baila entre el binario y su
+                    // helper de un escaneo a otro, y con el pid dentro React
+                    // remontaba el anillo — el micro salto cada 3 s. El pid sigue
+                    // en su campo.
+                    id: format!("{:?}", agent_type),
                     pid: pid_u32,
                     agent_type,
                     name,
