@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentType {
     Claude,
-    Codex,
     Antigravity,
     OpenCode,
+    Codex,
     Aider,
     Copilot,
     Unknown,

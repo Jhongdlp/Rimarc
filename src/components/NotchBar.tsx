@@ -32,6 +32,7 @@ import {
 import { call } from "../lib/tauri";
 import { useAutoHide } from "../lib/prefs";
 import { useTheme } from "../lib/theme";
+import { sortSessions } from "../hooks/useAgentScan";
 import type { AgentSession } from "../types";
 
 /** Fraccion del camino que recorre el notch por fotograma al arrastrar. */
@@ -44,7 +45,7 @@ interface DragTarget {
 
 export function NotchBar({ sessions }: { sessions: AgentSession[] }) {
   const { isDark, colors } = useTheme();
-  const items = sessions.slice(0, MAX_ITEMS);
+  const items = sortSessions(sessions).slice(0, MAX_ITEMS);
 
   // Borde de pantalla al que esta pegado el notch. Toda la maqueta se escribe
   // como si estuviera a la derecha; `columnTransform` la gira al borde real.
@@ -60,7 +61,8 @@ export function NotchBar({ sessions }: { sessions: AgentSession[] }) {
   const [detailIndex, setDetailIndex] = useState(0);
   const [dragging, setDragging] = useState(false);
 
-  const active = items[detailIndex];
+  const safeDetailIndex = Math.min(detailIndex, Math.max(0, items.length - 1));
+  const active = items[safeDetailIndex];
   const detailOpen = detail.hovered && Boolean(active);
 
   // El disco se abre al pasar por encima, pero el panel solo con un clic; al
@@ -107,7 +109,7 @@ export function NotchBar({ sessions }: { sessions: AgentSession[] }) {
   // El panel se sale de la columna del notch, asi que mientras esta abierto la
   // mascara de input tiene que cubrir toda la ventana, no solo los 80 px.
   const shapeMode = dragging || detailOpen || settingsOpen ? "expanded" : collapsed ? "peek" : "bar";
-  const detailBottom = detailOpen ? ringCenterY(detailIndex) + popoverHeight(2) / 2 : 0;
+  const detailBottom = detailOpen ? ringCenterY(safeDetailIndex) + popoverHeight(2) / 2 : 0;
   const settingsBottom = settingsOpen ? height + SETTINGS_HEIGHT / 2 : 0;
   useInputShape(
     shapeMode,
@@ -125,8 +127,8 @@ export function NotchBar({ sessions }: { sessions: AgentSession[] }) {
       {active && (
         <DetailPopover
           sessions={items}
-          index={detailIndex}
-          anchor={anchorFor(edge, along + ringCenterY(detailIndex), stage)}
+          index={safeDetailIndex}
+          anchor={anchorFor(edge, along + ringCenterY(safeDetailIndex), stage)}
           open={detailOpen}
           onHoverStart={detail.open}
           onHoverEnd={detail.close}

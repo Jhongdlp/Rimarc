@@ -3,9 +3,9 @@
 
 export type AgentType =
   | "claude"
-  | "codex"
   | "antigravity"
   | "opencode"
+  | "codex"
   | "aider"
   | "copilot"
   | "unknown";

@@ -150,6 +150,10 @@ impl AgentScanner {
             }
         }
 
+        // Orden determinista y estable para que las posiciones no bailen
+        // entre escaneos cuando hay múltiples agentes corriendo.
+        sessions.sort_by(|a, b| a.agent_type.cmp(&b.agent_type).then_with(|| a.id.cmp(&b.id)));
+
         let total_tokens: u64 = sessions.iter().map(|s| s.tokens_in + s.tokens_out).sum();
         let total_cost: f64 = sessions.iter().map(|s| s.total_cost_usd).sum();
         let active_count = sessions.len();

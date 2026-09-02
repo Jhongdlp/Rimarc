@@ -1,6 +1,25 @@
 import { useEffect, useState } from "react";
-import type { AgentSession, SystemAgentSummary } from "../types";
+import type { AgentSession, AgentType, SystemAgentSummary } from "../types";
 import { call, inTauri } from "../lib/tauri";
+
+const AGENT_ORDER: Record<AgentType, number> = {
+  claude: 0,
+  antigravity: 1,
+  opencode: 2,
+  codex: 3,
+  aider: 4,
+  copilot: 5,
+  unknown: 6,
+};
+
+export function sortSessions(sessions: AgentSession[]): AgentSession[] {
+  return [...sessions].sort((a, b) => {
+    const orderA = AGENT_ORDER[a.agent_type] ?? 99;
+    const orderB = AGENT_ORDER[b.agent_type] ?? 99;
+    if (orderA !== orderB) return orderA - orderB;
+    return a.id.localeCompare(b.id);
+  });
+}
 
 /**
  * Sondea `scan_agents`. Fuera de Tauri devuelve la muestra de la referencia
@@ -8,7 +27,9 @@ import { call, inTauri } from "../lib/tauri";
  * navegador sin levantar el backend.
  */
 export function useAgentScan(intervalMs: number): AgentSession[] {
-  const [sessions, setSessions] = useState<AgentSession[]>(inTauri ? [] : REFERENCE_SAMPLE);
+  const [sessions, setSessions] = useState<AgentSession[]>(
+    inTauri ? [] : sortSessions(REFERENCE_SAMPLE),
+  );
 
   useEffect(() => {
     if (!inTauri) return;
@@ -16,7 +37,7 @@ export function useAgentScan(intervalMs: number): AgentSession[] {
 
     const tick = async () => {
       const summary = await call<SystemAgentSummary>("scan_agents");
-      if (alive && summary) setSessions(summary.sessions);
+      if (alive && summary) setSessions(sortSessions(summary.sessions));
     };
 
     void tick();
