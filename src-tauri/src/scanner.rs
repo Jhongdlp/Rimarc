@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use sysinfo::{ProcessesToUpdate, System};
-use crate::models::{AgentSession, AgentStatus, AgentType, SystemAgentSummary};
+use crate::models::{AgentInstance, AgentSession, AgentStatus, AgentType, SystemAgentSummary};
 use crate::parser::{
-    parse_antigravity_metrics, parse_claude_project_metrics, parse_codex_metrics,
+    claude_pending_tool, parse_antigravity_metrics, parse_claude_project_metrics, parse_codex_metrics,
     parse_opencode_metrics, MetricsCache,
 };
 
@@ -28,6 +28,7 @@ impl AgentScanner {
         let mut sessions: Vec<AgentSession> = Vec::new();
         let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home/jhon"));
         let winners = self.pick_one_pid_per_agent();
+        let mut instances = self.list_instances(&home_dir);
 
         for (pid, process) in self.sys.processes() {
             let p_name = process.name().to_string_lossy().to_lowercase();
@@ -62,13 +63,7 @@ impl AgentScanner {
                 let cpu = process.cpu_usage();
                 let mem_mb = (process.memory() as f32) / (1024.0 * 1024.0);
 
-                let status = if cpu > 5.0 {
-                    AgentStatus::Thinking
-                } else if cpu > 0.5 {
-                    AgentStatus::Running
-                } else {
-                    AgentStatus::WaitingInput
-                };
+                let status = cpu_status(cpu);
 
                 // Fetch metrics from storage with cache
                 let m = match agent_type {
@@ -94,6 +89,7 @@ impl AgentScanner {
                     _ => crate::parser::UsageMetrics::default(),
                 };
 
+                let id_key = format!("{:?}", agent_type);
                 let now_str = chrono::Local::now().format("%H:%M:%S").to_string();
 
                 // Codex y Antigravity publican la ventana del modelo activo;
@@ -117,7 +113,7 @@ impl AgentScanner {
                     // helper de un escaneo a otro, y con el pid dentro React
                     // remontaba el anillo — el micro salto cada 3 s. El pid sigue
                     // en su campo.
-                    id: format!("{:?}", agent_type),
+                    id: id_key.clone(),
                     pid: pid_u32,
                     agent_type,
                     name,
@@ -146,6 +142,7 @@ impl AgentScanner {
                     context_window_size: Some(context_cap),
                     context_tokens: Some(ctx_tokens),
                     quota_live: m.quota_live,
+                    instances: instances.remove(&id_key).unwrap_or_default(),
                 });
             }
         }
@@ -186,6 +183,61 @@ impl AgentScanner {
             memory_percent,
             uptime_secs,
         }
+    }
+
+    /// Todas las instancias vivas de cada tipo de agente. Se saltan hilos y
+    /// procesos hijos de otro agente del mismo tipo (helpers, servidores MCP):
+    /// solo cuenta la raiz de cada sesion.
+    fn list_instances(&mut self, home: &Path) -> HashMap<String, Vec<AgentInstance>> {
+        let identify = |p: &sysinfo::Process| {
+            let cmd = p
+                .cmd()
+                .iter()
+                .map(|s| s.to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            identify_agent(&p.name().to_string_lossy().to_lowercase(), &cmd).map(|(t, _)| t)
+        };
+
+        let mut out: HashMap<String, Vec<AgentInstance>> = HashMap::new();
+        for (pid, process) in self.sys.processes() {
+            if process.thread_kind().is_some() {
+                continue;
+            }
+            let Some(agent_type) = identify(process) else { continue };
+            let parent_same = process
+                .parent()
+                .and_then(|pp| self.sys.process(pp))
+                .and_then(|pp| identify(pp))
+                .map_or(false, |t| t == agent_type);
+            if parent_same {
+                continue;
+            }
+
+            let pid = pid.as_u32();
+            let cwd = get_process_cwd(pid)
+                .or_else(|| process.cwd().map(|p| p.to_string_lossy().to_string()))
+                .unwrap_or_default();
+            let status = match agent_type {
+                AgentType::Claude => claude_status(&mut self.cache, home, pid),
+                _ => None,
+            }
+            .unwrap_or_else(|| cpu_status(process.cpu_usage()));
+
+            out.entry(format!("{:?}", agent_type)).or_default().push(AgentInstance {
+                pid,
+                project_name: Path::new(&cwd)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "General".to_string()),
+                cwd,
+                status,
+            });
+        }
+        for list in out.values_mut() {
+            list.sort_by_key(|i| i.pid);
+        }
+        out
     }
 
     /// Un proceso por tipo de agente: el mas ocupado, y a igualdad de CPU el pid
@@ -268,6 +320,40 @@ fn identify_agent(name: &str, cmd: &str) -> Option<(AgentType, String)> {
     else {
         None
     }
+}
+
+fn cpu_status(cpu: f32) -> AgentStatus {
+    if cpu > 5.0 {
+        AgentStatus::Thinking
+    } else if cpu > 0.5 {
+        AgentStatus::Running
+    } else {
+        // Sin fuente de estado real no se sabe si espera o ya acabo.
+        AgentStatus::Idle
+    }
+}
+
+/// Estado real de una instancia de Claude Code: `~/.claude/sessions/<pid>.json`
+/// dice si esta ocupada, y la herramienta pendiente de su transcript en que.
+fn claude_status(cache: &mut MetricsCache, home: &Path, pid: u32) -> Option<AgentStatus> {
+    let raw = std::fs::read_to_string(home.join(".claude/sessions").join(format!("{pid}.json"))).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let busy = v.get("status")?.as_str()?;
+    let transcript = home
+        .join(".claude/projects")
+        .join(v.get("cwd")?.as_str()?.replace('/', "-"))
+        .join(format!("{}.jsonl", v.get("sessionId")?.as_str()?));
+    let pending = claude_pending_tool(cache, &transcript);
+
+    Some(match (busy, pending.as_deref()) {
+        (_, Some("AskUserQuestion" | "ExitPlanMode")) => AgentStatus::WaitingInput,
+        ("busy", Some("Edit" | "Write" | "MultiEdit" | "NotebookEdit")) => AgentStatus::Editing,
+        ("busy", Some(_)) => AgentStatus::ToolExecuting,
+        ("busy", None) => AgentStatus::Thinking,
+        ("idle", _) => AgentStatus::Done,
+        // Cualquier otro estado (permiso pendiente, etc.) espera al usuario.
+        _ => AgentStatus::WaitingInput,
+    })
 }
 
 fn get_process_cwd(pid: u32) -> Option<String> {

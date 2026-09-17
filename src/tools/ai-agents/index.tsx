@@ -24,7 +24,14 @@ export const agentMonitorTool: NotchTool<AgentSession[]> = {
   author: "Rimarc Core",
   category: "ai",
   badge: "Oficial",
+  en: {
+    name: "AI Agent Monitor",
+    tagline: "Claude Code, Antigravity, OpenCode, Codex",
+    description: "Real-time monitoring of AI coding sessions, daily/weekly quota usage, tokens and quick shortcuts.",
+    badge: "Official",
+  },
   icon: Bot,
+  thumbnail: "/miniature/ai-agents.webp",
 
   useData: useAgentSessions,
 

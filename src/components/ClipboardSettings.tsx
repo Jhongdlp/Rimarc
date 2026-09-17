@@ -12,14 +12,18 @@ import {
   type ThemeMode,
 } from "../lib/theme";
 import { call, inTauri } from "../lib/tauri";
+import { useI18n } from "../lib/i18n";
 
 type Section = "appearance" | "list" | "keys" | "mcp";
 
-const SECTIONS: { id: Section; label: string; title: string; icon: typeof Plug }[] = [
-  { id: "appearance", label: "Apariencia", title: "Apariencia", icon: Palette },
-  { id: "list", label: "Lista", title: "Lista", icon: List },
-  { id: "keys", label: "Atajos", title: "Atajos de teclado", icon: Keyboard },
-  { id: "mcp", label: "Conectar", title: "Conectar a un agente", icon: Plug },
+/** Etiquetas `[es, en]`: se eligen con `tr(...pair)`. */
+type Pair = [string, string];
+
+const SECTIONS: { id: Section; label: Pair; title: Pair; icon: typeof Plug }[] = [
+  { id: "appearance", label: ["Apariencia", "Appearance"], title: ["Apariencia", "Appearance"], icon: Palette },
+  { id: "list", label: ["Lista", "List"], title: ["Lista", "List"], icon: List },
+  { id: "keys", label: ["Atajos", "Shortcuts"], title: ["Atajos de teclado", "Keyboard shortcuts"], icon: Keyboard },
+  { id: "mcp", label: ["Conectar", "Connect"], title: ["Conectar a un agente", "Connect to an agent"], icon: Plug },
 ];
 
 const close = () => void call("close_clipboard_settings");
@@ -32,6 +36,7 @@ export function ClipboardSettings() {
   const { colors, isDark } = useTheme();
   const prefs = useClipboardPrefs();
   const edge = borderColorFor(prefs, isDark);
+  const { tr } = useI18n();
   const [section, setSection] = useState<Section>("appearance");
 
   useEffect(() => {
@@ -77,7 +82,7 @@ export function ClipboardSettings() {
           data-tauri-drag-region
           style={{ padding: "0 10px 16px", fontSize: 15, fontWeight: 600, color: colors.title }}
         >
-          Portapapeles
+          {tr("Portapapeles", "Clipboard")}
         </div>
         {SECTIONS.map(({ id, label, icon: Icon }) => {
           const active = section === id;
@@ -100,7 +105,7 @@ export function ClipboardSettings() {
               }}
             >
               <Icon size={15} strokeWidth={1.8} />
-              {label}
+              {tr(...label)}
             </button>
           );
         })}
@@ -121,7 +126,7 @@ export function ClipboardSettings() {
           }}
         >
           <h1 data-tauri-drag-region style={{ margin: 0, fontSize: 20, fontWeight: 600, color: colors.title }}>
-            {SECTIONS.find((x) => x.id === section)!.title}
+            {tr(...SECTIONS.find((x) => x.id === section)!.title)}
           </h1>
           <CloseButton />
         </header>
@@ -135,12 +140,13 @@ export function ClipboardSettings() {
 
 function CloseButton() {
   const { colors } = useTheme();
+  const { tr } = useI18n();
   const [hover, setHover] = useState(false);
   return (
     <button
       type="button"
-      title="Cerrar (Esc)"
-      aria-label="Cerrar"
+      title={tr("Cerrar (Esc)", "Close (Esc)")}
+      aria-label={tr("Cerrar", "Close")}
       onClick={close}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -164,64 +170,82 @@ function CloseButton() {
 }
 
 /** Cada tema se muestra como una muestra de su propio fondo; Sistema, partido en diagonal. */
-const THEMES: { id: ThemeMode; label: string; icon: typeof Sun; swatch: string; ink: string }[] = [
-  { id: "light", label: "Claro", icon: Sun, swatch: "#FFFFFF", ink: "#1C1C1E" },
-  { id: "dark", label: "Oscuro", icon: Moon, swatch: "#000000", ink: "#FFFFFF" },
+const THEMES: { id: ThemeMode; label: string; en: string; icon: typeof Sun; swatch: string; ink: string }[] = [
+  { id: "light", label: "Claro", en: "Light", icon: Sun, swatch: "#FFFFFF", ink: "#1C1C1E" },
+  { id: "dark", label: "Oscuro", en: "Dark", icon: Moon, swatch: "#000000", ink: "#FFFFFF" },
   // El glifo en blanco con `difference` sale negro sobre la mitad blanca y blanco sobre la negra.
-  { id: "system", label: "Sistema", icon: Monitor, swatch: "linear-gradient(135deg, #FFFFFF 50%, #000000 50%)", ink: "#FFFFFF" },
+  { id: "system", label: "Sistema", en: "System", icon: Monitor, swatch: "linear-gradient(135deg, #FFFFFF 50%, #000000 50%)", ink: "#FFFFFF" },
 ];
 
-const WIDTHS: { id: ClipboardPrefs["borderWidth"]; label: string }[] = [
-  { id: 1, label: "Fino" },
-  { id: 2, label: "Medio" },
-  { id: 3, label: "Grueso" },
+type Option<T> = { id: T; label: string; en?: string };
+
+const WIDTHS: Option<ClipboardPrefs["borderWidth"]>[] = [
+  { id: 1, label: "Fino", en: "Thin" },
+  { id: 2, label: "Medio", en: "Medium" },
+  { id: 3, label: "Grueso", en: "Thick" },
 ];
 
-const FONT_SCALES = [
-  { id: 0.9, label: "Pequeña" },
+const FONT_SCALES: Option<number>[] = [
+  { id: 0.9, label: "Pequeña", en: "Small" },
   { id: 1, label: "Normal" },
-  { id: 1.15, label: "Grande" },
+  { id: 1.15, label: "Grande", en: "Large" },
 ];
 
-const OPACITIES = [
+const OPACITIES: Option<number>[] = [
   { id: 1, label: "100 %" },
   { id: 0.9, label: "90 %" },
   { id: 0.8, label: "80 %" },
   { id: 0.65, label: "65 %" },
 ];
 
-const DENSITIES: { id: ClipboardPrefs["density"]; label: string }[] = [
-  { id: "compact", label: "Compacta" },
-  { id: "comfy", label: "Cómoda" },
+const DENSITIES: Option<ClipboardPrefs["density"]>[] = [
+  { id: "compact", label: "Compacta", en: "Compact" },
+  { id: "comfy", label: "Cómoda", en: "Comfy" },
 ];
 
-const LINES: { id: ClipboardPrefs["previewLines"]; label: string }[] = [
+const LINES: Option<ClipboardPrefs["previewLines"]>[] = [
   { id: 1, label: "1" },
   { id: 2, label: "2" },
   { id: 3, label: "3" },
 ];
 
-const LIMITS: { id: ClipboardPrefs["historyLimit"]; label: string }[] = [
+const LIMITS: Option<ClipboardPrefs["historyLimit"]>[] = [
   { id: 25, label: "25" },
   { id: 50, label: "50" },
   { id: 100, label: "100" },
 ];
 
-const paletteName = (color: string) => PALETTE.find((p) => p.color === color)?.label ?? color;
+/** Texto de una opcion en el idioma activo; sin `en`, la etiqueta vale para los dos. */
+function useLabel() {
+  const { lang } = useI18n();
+  return (o: { label: string; en?: string }) => (lang === "en" && o.en) || o.label;
+}
+
+function usePaletteName() {
+  const label = useLabel();
+  return (color: string) => {
+    const p = PALETTE.find((p) => p.color === color);
+    return p ? label(p) : color;
+  };
+}
 
 function Appearance() {
   const { colors, theme, setTheme, isDark } = useTheme();
   const prefs = useClipboardPrefs();
   const ring = useRing();
+  const { tr } = useI18n();
+  const label = useLabel();
+  const paletteName = usePaletteName();
+  const current = THEMES.find((t) => t.id === theme);
 
   return (
     <>
       <Preview />
 
       <Card>
-        <Row label="Tema" hint={THEMES.find((t) => t.id === theme)?.label}>
+        <Row label={tr("Tema", "Theme")} hint={current && label(current)}>
           <div role="radiogroup" style={{ display: "flex", gap: 10 }}>
-            {THEMES.map(({ id, label, icon: Icon, swatch, ink }) => (
+            {THEMES.map((o) => ({ ...o, label: label(o) })).map(({ id, label, icon: Icon, swatch, ink }) => (
               <button
                 key={id}
                 type="button"
@@ -255,27 +279,31 @@ function Appearance() {
           </div>
         </Row>
 
-        <Row label="Acento" hint={prefs.accent ? paletteName(prefs.accent) : "Automático"}>
+        <Row label={tr("Acento", "Accent")} hint={prefs.accent ? paletteName(prefs.accent) : tr("Automático", "Automatic")}>
           <Swatches
             value={prefs.accent}
-            extra={[{ id: null, label: "Automático", color: colors.detailLabel }]}
+            extra={[{ id: null, label: tr("Automático", "Automatic"), color: colors.detailLabel }]}
             onChange={(accent) => setClipboardPrefs({ accent })}
           />
         </Row>
       </Card>
 
-      <Card title="Carta">
+      <Card title={tr("Carta", "Card")}>
         <Row
-          label="Borde"
+          label={tr("Borde", "Border")}
           hint={
-            prefs.border === "none" ? "Sin borde" : prefs.border === "auto" ? "Según el tema" : paletteName(prefs.borderColor)
+            prefs.border === "none"
+              ? tr("Sin borde", "No border")
+              : prefs.border === "auto"
+                ? tr("Según el tema", "Follows theme")
+                : paletteName(prefs.borderColor)
           }
         >
           <Swatches
             value={prefs.border === "custom" ? prefs.borderColor : prefs.border}
             extra={[
-              { id: "none", label: "Sin borde" },
-              { id: "auto", label: "Según el tema", color: borderColorFor({ ...prefs, border: "auto" }, isDark) },
+              { id: "none", label: tr("Sin borde", "No border") },
+              { id: "auto", label: tr("Según el tema", "Follows theme"), color: borderColorFor({ ...prefs, border: "auto" }, isDark) },
             ]}
             onChange={(v) =>
               setClipboardPrefs(v === "none" || v === "auto" ? { border: v } : { border: "custom", borderColor: v })
@@ -284,7 +312,7 @@ function Appearance() {
         </Row>
 
         {/* Sin borde el grosor no significa nada: se queda, pero apagado. */}
-        <Row label="Grosor del borde" disabled={prefs.border === "none"}>
+        <Row label={tr("Grosor del borde", "Border width")} disabled={prefs.border === "none"}>
           <Segmented
             options={WIDTHS}
             value={prefs.borderWidth}
@@ -298,7 +326,7 @@ function Appearance() {
           />
         </Row>
 
-        <Row label="Opacidad del fondo" hint="Deja ver el escritorio a través">
+        <Row label={tr("Opacidad del fondo", "Background opacity")} hint={tr("Deja ver el escritorio a través", "Lets the desktop show through")}>
           <Segmented
             options={OPACITIES}
             value={prefs.surfaceOpacity}
@@ -314,12 +342,13 @@ function Appearance() {
 
 function ListPrefs() {
   const prefs = useClipboardPrefs();
+  const { tr } = useI18n();
   return (
     <>
       <Preview />
 
-      <Card title="Texto">
-        <Row label="Tamaño de letra">
+      <Card title={tr("Texto", "Text")}>
+        <Row label={tr("Tamaño de letra", "Font size")}>
           <Segmented
             options={FONT_SCALES}
             value={prefs.fontScale}
@@ -332,10 +361,10 @@ function ListPrefs() {
             )}
           />
         </Row>
-        <Row label="Líneas de vista previa" hint="Cuánto texto enseña cada elemento">
+        <Row label={tr("Líneas de vista previa", "Preview lines")} hint={tr("Cuánto texto enseña cada elemento", "How much text each item shows")}>
           <Segmented options={LINES} value={prefs.previewLines} onChange={(previewLines) => setClipboardPrefs({ previewLines })} />
         </Row>
-        <Row label="Densidad" hint="Espacio entre elementos">
+        <Row label={tr("Densidad", "Density")} hint={tr("Espacio entre elementos", "Space between items")}>
           <Segmented
             options={DENSITIES}
             value={prefs.density}
@@ -354,11 +383,11 @@ function ListPrefs() {
         </Row>
       </Card>
 
-      <Card title="Comportamiento">
-        <Row label="Elementos en el historial" hint="Los fijados se guardan aparte">
+      <Card title={tr("Comportamiento", "Behavior")}>
+        <Row label={tr("Elementos en el historial", "Items in history")} hint={tr("Los fijados se guardan aparte", "Pinned items are kept separately")}>
           <Segmented options={LIMITS} value={prefs.historyLimit} onChange={(historyLimit) => setClipboardPrefs({ historyLimit })} />
         </Row>
-        <Row label="Cerrar al copiar" hint="Desactívalo para copiar varios seguidos">
+        <Row label={tr("Cerrar al copiar", "Close on copy")} hint={tr("Desactívalo para copiar varios seguidos", "Turn off to copy several in a row")}>
           <Switch on={prefs.closeOnCopy} onChange={(closeOnCopy) => setClipboardPrefs({ closeOnCopy })} />
         </Row>
       </Card>
@@ -369,9 +398,19 @@ function ListPrefs() {
 }
 
 const SAMPLE = [
-  { text: "pnpm dev:tauri\ncargo check --manifest-path src-tauri/Cargo.toml\ngit status", meta: "Copiado", mono: true },
-  { text: "La reunión se mueve al jueves a las 10:00.\nTraed la demo del portapapeles.", meta: "Texto  ·  74 car.", mono: false },
-];
+  {
+    text: ["pnpm dev:tauri\ncargo check --manifest-path src-tauri/Cargo.toml\ngit status", "pnpm dev:tauri\ncargo check --manifest-path src-tauri/Cargo.toml\ngit status"],
+    meta: ["Copiado", "Copied"],
+    mono: true,
+    copied: true,
+  },
+  {
+    text: ["La reunión se mueve al jueves a las 10:00.\nTraed la demo del portapapeles.", "The meeting moves to Thursday at 10:00.\nBring the clipboard demo."],
+    meta: ["Texto  ·  74 car.", "Text  ·  74 chars"],
+    mono: false,
+    copied: false,
+  },
+] satisfies { text: Pair; meta: Pair; mono: boolean; copied: boolean }[];
 
 /**
  * La carta en miniatura con las preferencias aplicadas, sobre un degradado:
@@ -385,6 +424,7 @@ function Preview() {
   const accent = prefs.accent ?? colors.detailLabel;
   const k = prefs.fontScale;
   const pad = prefs.density === "compact" ? 6 : 10;
+  const { tr } = useI18n();
 
   return (
     <div
@@ -425,10 +465,10 @@ function Preview() {
           {/* El fondo en su propia capa: `opacity` en la carta apagaria tambien el texto y el borde. */}
           <div style={{ position: "absolute", inset: 0, zIndex: -1, background: colors.surface, opacity: prefs.surfaceOpacity }} />
           <div style={{ display: "flex", gap: 14, fontSize: 12 * k, fontWeight: 600 }}>
-            <span style={{ paddingBottom: 5, color: colors.detailLabel, borderBottom: `2px solid ${accent}` }}>Recientes</span>
-            <span style={{ color: colors.detailValue }}>Fijados</span>
+            <span style={{ paddingBottom: 5, color: colors.detailLabel, borderBottom: `2px solid ${accent}` }}>{tr("Recientes", "Recent")}</span>
+            <span style={{ color: colors.detailValue }}>{tr("Fijados", "Pinned")}</span>
           </div>
-          {SAMPLE.map((r) => (
+          {SAMPLE.map((s) => ({ ...s, text: tr(...s.text), meta: tr(...s.meta) })).map((r) => (
             <div key={r.meta} style={{ padding: `${pad}px 0`, borderBottom: `1px solid ${colors.track}` }}>
               <div
                 style={{
@@ -452,7 +492,7 @@ function Preview() {
                   marginTop: 4,
                   fontSize: 11 * k,
                   fontWeight: 500,
-                  color: r.meta === "Copiado" ? accent : colors.detailValue,
+                  color: r.copied ? accent : colors.detailValue,
                 }}
               >
                 {r.meta}
@@ -538,6 +578,7 @@ function Row({
 
 function Reset() {
   const { colors } = useTheme();
+  const { tr } = useI18n();
   return (
     <button
       type="button"
@@ -555,7 +596,7 @@ function Reset() {
       }}
     >
       <RotateCcw size={13} strokeWidth={2} />
-      Restablecer valores
+      {tr("Restablecer valores", "Reset to defaults")}
     </button>
   );
 }
@@ -586,7 +627,8 @@ function Swatches<V extends string | null>({
 }) {
   const { colors } = useTheme();
   const ring = useRing();
-  const options = [...extra, ...PALETTE.map((p) => ({ id: p.color, label: p.label, color: p.color }))];
+  const label = useLabel();
+  const options = [...extra, ...PALETTE.map((p) => ({ id: p.color, label: label(p), color: p.color }))];
   return (
     <div role="radiogroup" style={{ display: "flex", gap: 7 }}>
       {options.map((o, i) => {
@@ -630,15 +672,16 @@ function Segmented<T extends number | string>({
   onChange,
   render,
 }: {
-  options: { id: T; label: string }[];
+  options: Option<T>[];
   value: T;
   onChange: (v: T) => void;
-  render?: (o: { id: T; label: string }) => React.ReactNode;
+  render?: (o: Option<T>) => React.ReactNode;
 }) {
   const { colors } = useTheme();
+  const label = useLabel();
   return (
     <div role="radiogroup" style={{ display: "inline-flex", padding: 3, gap: 2, borderRadius: 9, background: colors.track }}>
-      {options.map((o) => {
+      {options.map((o) => ({ ...o, label: label(o) })).map((o) => {
         const on = o.id === value;
         return (
           <button
@@ -753,7 +796,11 @@ function qtLabel(key: number): string {
 }
 
 /** Nombres para pintar: Qt dice `Del`, el teclado español dice `Supr`. */
-const KEY_CAPS: Record<string, string> = { Del: "Supr", Ins: "Insert", PgUp: "RePág", PgDown: "AvPág", Space: "Espacio", Up: "↑", Down: "↓", Left: "←", Right: "→" };
+const ARROWS: Record<string, string> = { Up: "↑", Down: "↓", Left: "←", Right: "→" };
+const KEY_CAPS = {
+  es: { ...ARROWS, Del: "Supr", Ins: "Insert", PgUp: "RePág", PgDown: "AvPág", Space: "Espacio" },
+  en: { ...ARROWS, Del: "Delete", Ins: "Insert", PgUp: "PgUp", PgDown: "PgDn", Space: "Space" },
+} satisfies Record<string, Record<string, string>>;
 
 function Kbd({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
@@ -782,24 +829,26 @@ function Kbd({ children }: { children: React.ReactNode }) {
 }
 
 function Keys({ label }: { label: string }) {
+  const { lang } = useI18n();
+  const caps: Record<string, string> = KEY_CAPS[lang];
   return (
     <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
       {label.split("+").map((k, i) => (
-        <Kbd key={i}>{KEY_CAPS[k] ?? k}</Kbd>
+        <Kbd key={i}>{caps[k] ?? k}</Kbd>
       ))}
     </span>
   );
 }
 
-const CARD_KEYS: [string, string][] = [
-  ["Moverse por la lista", "Up+Down"],
-  ["Copiar el seleccionado", "Enter"],
-  ["Copiar del 1.º al 9.º", "Alt+1…9"],
-  ["Cambiar entre Recientes y Fijados", "Tab"],
-  ["Fijar o desfijar", "Ctrl+P"],
-  ["Eliminar el seleccionado", "Shift+Del"],
-  ["Buscar", "Ctrl+F"],
-  ["Cerrar", "Esc"],
+const CARD_KEYS: [Pair, string][] = [
+  [["Moverse por la lista", "Move through the list"], "Up+Down"],
+  [["Copiar el seleccionado", "Copy the selected item"], "Enter"],
+  [["Copiar del 1.º al 9.º", "Copy the 1st to 9th"], "Alt+1…9"],
+  [["Cambiar entre Recientes y Fijados", "Switch between Recent and Pinned"], "Tab"],
+  [["Fijar o desfijar", "Pin or unpin"], "Ctrl+P"],
+  [["Eliminar el seleccionado", "Delete the selected item"], "Shift+Del"],
+  [["Buscar", "Search"], "Ctrl+F"],
+  [["Cerrar", "Close"], "Esc"],
 ];
 
 const SUGGESTED = [0x10000000 | 0x02000000 | 0x56, 0x04000000 | 0x08000000 | 0x56]; // Meta+Shift+V, Ctrl+Alt+V
@@ -813,6 +862,7 @@ type Recording =
 
 function Shortcuts() {
   const { colors } = useTheme();
+  const { tr } = useI18n();
   const [state, setState] = useState<{ supported: boolean; key: number } | null>(null);
   const [rec, setRec] = useState<Recording>({ phase: "idle" });
   const [saved, setSaved] = useState(false);
@@ -868,7 +918,7 @@ function Shortcuts() {
     const isF = /^F\d+$/.test(base[1]);
     // Una letra sola (o con Shift) se comeria la escritura en cualquier app.
     if (!isF && !held.some((m) => m !== "Shift")) {
-      return setRec({ phase: "listening", held: ["Ctrl, Alt o Meta + tecla"] });
+      return setRec({ phase: "listening", held: [tr("Ctrl, Alt o Meta + tecla", "Ctrl, Alt or Meta + key")] });
     }
     const key = QT_MODS.filter((m) => m.on(e)).reduce((k, m) => k | m.flag, base[0]);
     void apply(key);
@@ -883,28 +933,37 @@ function Shortcuts() {
   return (
     <>
       <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: colors.detailValue }}>
-        Abre el portapapeles desde cualquier aplicación y muévete por él sin tocar el ratón.
+        {tr(
+          "Abre el portapapeles desde cualquier aplicación y muévete por él sin tocar el ratón.",
+          "Open the clipboard from any app and move through it without touching the mouse.",
+        )}
       </p>
 
       <Card title="Global">
         {state && !state.supported ? (
           <div style={{ padding: "14px 0", display: "flex", gap: 8, fontSize: 12.5, lineHeight: 1.5, color: colors.detailValue }}>
             <Info size={15} strokeWidth={2} style={{ flex: "none", marginTop: 2 }} />
-            Los atajos globales solo están disponibles en KDE Plasma. Puedes asignar la orden
-            <code style={{ color: colors.detailLabel }}> rimarc --clipboard </code> desde los ajustes de tu escritorio.
+            <span>
+              {tr(
+                "Los atajos globales solo están disponibles en KDE Plasma. Puedes asignar la orden",
+                "Global shortcuts are only available on KDE Plasma. You can bind the command",
+              )}
+              <code style={{ color: colors.detailLabel }}> rimarc --clipboard </code>
+              {tr("desde los ajustes de tu escritorio.", "from your desktop settings.")}
+            </span>
           </div>
         ) : (
           <>
             <Row
-              label="Abrir el portapapeles"
+              label={tr("Abrir el portapapeles", "Open the clipboard")}
               hint={
                 listening
-                  ? "Esc para cancelar"
+                  ? tr("Esc para cancelar", "Esc to cancel")
                   : rec.phase === "saving"
-                    ? "Registrando en KDE…"
+                    ? tr("Registrando en KDE…", "Registering with KDE…")
                     : saved
-                      ? "Guardado"
-                      : "Desde cualquier aplicación"
+                      ? tr("Guardado", "Saved")
+                      : tr("Desde cualquier aplicación", "From any app")
               }
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -914,7 +973,7 @@ function Shortcuts() {
                   onKeyDown={onKeyDown}
                   onKeyUp={onKeyUp}
                   disabled={!state || rec.phase === "saving"}
-                  aria-label="Grabar atajo"
+                  aria-label={tr("Grabar atajo", "Record shortcut")}
                   style={{
                     ...bare,
                     minWidth: 150,
@@ -937,7 +996,7 @@ function Shortcuts() {
                     rec.held.length ? (
                       <span style={{ color: colors.detailLabel }}>{rec.held.join(" + ")} + …</span>
                     ) : (
-                      <span className="shortcut-listening">Pulsa la combinación…</span>
+                      <span className="shortcut-listening">{tr("Pulsa la combinación…", "Press the combination…")}</span>
                     )
                   ) : saved ? (
                     <span style={{ display: "flex", alignItems: "center", gap: 6, color: "#30D158" }}>
@@ -946,14 +1005,14 @@ function Shortcuts() {
                   ) : state?.key ? (
                     <Keys label={qtLabel(state.key)} />
                   ) : (
-                    "Asignar atajo"
+                    tr("Asignar atajo", "Set shortcut")
                   )}
                 </button>
                 {!!state?.key && !listening && (
                   <button
                     type="button"
-                    title="Quitar atajo"
-                    aria-label="Quitar atajo"
+                    title={tr("Quitar atajo", "Remove shortcut")}
+                    aria-label={tr("Quitar atajo", "Remove shortcut")}
                     onClick={() => void apply(0)}
                     style={{ ...bare, padding: 6, borderRadius: 8, color: colors.detailValue, display: "flex" }}
                   >
@@ -966,23 +1025,23 @@ function Shortcuts() {
             {rec.phase === "conflict" && (
               <Notice tone="warn">
                 <span style={{ flex: 1 }}>
-                  <Keys label={qtLabel(rec.key)} /> ya lo usa <b style={{ color: colors.detailLabel }}>{rec.owner}</b>.
+                  <Keys label={qtLabel(rec.key)} /> {tr("ya lo usa", "is already used by")} <b style={{ color: colors.detailLabel }}>{rec.owner}</b>.
                 </span>
                 <SmallButton onClick={() => void apply(rec.key, true)} primary>
-                  Reasignar
+                  {tr("Reasignar", "Reassign")}
                 </SmallButton>
-                <SmallButton onClick={() => setRec({ phase: "idle" })}>Cancelar</SmallButton>
+                <SmallButton onClick={() => setRec({ phase: "idle" })}>{tr("Cancelar", "Cancel")}</SmallButton>
               </Notice>
             )}
             {rec.phase === "error" && (
               <Notice tone="error">
                 <span style={{ flex: 1 }}>{rec.message}</span>
-                <SmallButton onClick={() => setRec({ phase: "idle" })}>Vale</SmallButton>
+                <SmallButton onClick={() => setRec({ phase: "idle" })}>OK</SmallButton>
               </Notice>
             )}
 
             {!state?.key && rec.phase === "idle" && (
-              <Row label="Sugerencias" hint="Un clic y listo">
+              <Row label={tr("Sugerencias", "Suggestions")} hint={tr("Un clic y listo", "One click and done")}>
                 <div style={{ display: "flex", gap: 8 }}>
                   {SUGGESTED.map((key) => (
                     <button
@@ -1001,10 +1060,10 @@ function Shortcuts() {
         )}
       </Card>
 
-      <Card title="En la carta">
-        {CARD_KEYS.map(([label, keys]) => (
+      <Card title={tr("En la carta", "In the card")}>
+        {CARD_KEYS.map(([pair, keys]) => (
           <div
-            key={label}
+            key={keys}
             style={{
               display: "flex",
               alignItems: "center",
@@ -1015,7 +1074,7 @@ function Shortcuts() {
               color: colors.detailLabel,
             }}
           >
-            {label}
+            {tr(...pair)}
             <Keys label={keys} />
           </div>
         ))}
@@ -1084,6 +1143,7 @@ const RAINBOW = "linear-gradient(115deg, #4fcf70, #fad648, #a767e5, #12bcfe)";
  */
 function Mcp() {
   const { colors } = useTheme();
+  const { lang, tr } = useI18n();
   const [bin, setBin] = useState("rimarc");
   const [agent, setAgent] = useState<Agent>("claude");
   const [copied, setCopied] = useState<string | null>(null);
@@ -1093,31 +1153,43 @@ function Mcp() {
 
   // Un prompt que se pega en cualquier agente y el agente se configura solo:
   // no hace falta saber donde guarda cada uno su configuracion MCP.
-  const prompt = [
-    "Añade a tu configuración un servidor MCP por stdio:",
-    "- nombre: rimarc-clipboard",
-    `- comando: ${bin}`,
-    "- argumentos: --mcp",
-    "Da acceso al historial del portapapeles, imágenes incluidas (herramienta clipboard_history).",
-    "Si tienes CLI para añadir servidores MCP, úsalo; si no, edita tu fichero de configuración MCP.",
-    "Cuando termines, dime si tengo que reiniciar la sesión para que cargue.",
-  ].join("\n");
-  const example = "Mira las últimas 3 imágenes de mi portapapeles";
+  const prompt = (
+    lang === "es"
+      ? [
+          "Añade a tu configuración un servidor MCP por stdio:",
+          "- nombre: rimarc-clipboard",
+          `- comando: ${bin}`,
+          "- argumentos: --mcp",
+          "Da acceso al historial del portapapeles, imágenes incluidas (herramienta clipboard_history).",
+          "Si tienes CLI para añadir servidores MCP, úsalo; si no, edita tu fichero de configuración MCP.",
+          "Cuando termines, dime si tengo que reiniciar la sesión para que cargue.",
+        ]
+      : [
+          "Add a stdio MCP server to your configuration:",
+          "- name: rimarc-clipboard",
+          `- command: ${bin}`,
+          "- arguments: --mcp",
+          "It gives access to the clipboard history, images included (tool clipboard_history).",
+          "If you have a CLI to add MCP servers, use it; otherwise edit your MCP configuration file.",
+          "When you are done, tell me whether I need to restart the session for it to load.",
+        ]
+  ).join("\n");
+  const example = tr("Mira las últimas 3 imágenes de mi portapapeles", "Look at the last 3 images in my clipboard");
 
   const manual: Record<Agent, { label: string; hint: string; code: string }> = {
     claude: {
       label: "Claude Code",
-      hint: "Ejecútalo en tu terminal.",
+      hint: tr("Ejecútalo en tu terminal.", "Run it in your terminal."),
       code: `claude mcp add -s user rimarc-clipboard -- ${shellQuote(bin)} --mcp`,
     },
     codex: {
       label: "Codex",
-      hint: "Añádelo a ~/.codex/config.toml.",
+      hint: tr("Añádelo a ~/.codex/config.toml.", "Add it to ~/.codex/config.toml."),
       code: `[mcp_servers.rimarc-clipboard]\ncommand = ${JSON.stringify(bin)}\nargs = ["--mcp"]`,
     },
     json: {
-      label: "Otros",
-      hint: "Cursor, Gemini CLI, Claude Desktop: en su fichero de configuración MCP.",
+      label: tr("Otros", "Others"),
+      hint: tr("Cursor, Gemini CLI, Claude Desktop: en su fichero de configuración MCP.", "Cursor, Gemini CLI, Claude Desktop: in their MCP configuration file."),
       code: JSON.stringify({ mcpServers: { "rimarc-clipboard": { command: bin, args: ["--mcp"] } } }, null, 2),
     },
   };
@@ -1131,10 +1203,13 @@ function Mcp() {
   return (
     <>
       <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: colors.detailValue }}>
-        Deja que tu agente de IA lea el historial del portapapeles, imágenes incluidas.
+        {tr(
+          "Deja que tu agente de IA lea el historial del portapapeles, imágenes incluidas.",
+          "Let your AI agent read the clipboard history, images included.",
+        )}
       </p>
 
-      <Card title="Recomendado">
+      <Card title={tr("Recomendado", "Recommended")}>
         <div style={{ padding: "16px 0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <span
@@ -1153,9 +1228,9 @@ function Mcp() {
               <Sparkles size={18} strokeWidth={2.2} />
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: colors.detailLabel }}>Configuración automática</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: colors.detailLabel }}>{tr("Configuración automática", "Automatic setup")}</div>
               <div style={{ marginTop: 3, fontSize: 12, color: colors.detailValue }}>
-                Sirve para casi cualquier agente
+                {tr("Sirve para casi cualquier agente", "Works with almost any agent")}
               </div>
             </div>
             <button
@@ -1172,7 +1247,7 @@ function Mcp() {
                 }}
               >
                 {copied === "prompt" ? <Check size={15} strokeWidth={2.4} /> : <Copy size={15} strokeWidth={2} />}
-                {copied === "prompt" ? "Copiado" : "Copiar prompt"}
+                {copied === "prompt" ? tr("Copiado", "Copied") : tr("Copiar prompt", "Copy prompt")}
               </span>
             </button>
           </div>
@@ -1189,7 +1264,11 @@ function Mcp() {
               borderTop: `1px solid ${colors.track}`,
             }}
           >
-            {["Copia el prompt", "Pégalo en tu agente", "Reinicia si te lo pide"].map((step, i) => (
+            {[
+              tr("Copia el prompt", "Copy the prompt"),
+              tr("Pégalo en tu agente", "Paste it into your agent"),
+              tr("Reinicia si te lo pide", "Restart if it asks"),
+            ].map((step, i) => (
               <li key={step} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: colors.detailValue }}>
                 <span
                   style={{
@@ -1215,7 +1294,7 @@ function Mcp() {
         </div>
       </Card>
 
-      <Card title="Manual">
+      <Card title={tr("Manual", "Manual")}>
         <div style={{ padding: "14px 0 16px" }}>
           <Segmented
             options={(Object.keys(manual) as Agent[]).map((id) => ({ id, label: manual[id].label }))}
@@ -1227,15 +1306,18 @@ function Mcp() {
         </div>
       </Card>
 
-      <Card title="Pruébalo">
-        <Row label={`«${example}»`} hint="Pídeselo a tu agente cuando esté conectado">
+      <Card title={tr("Pruébalo", "Try it")}>
+        <Row label={tr(`«${example}»`, `“${example}”`)} hint={tr("Pídeselo a tu agente cuando esté conectado", "Ask your agent once it is connected")}>
           <CopyChip copied={copied === "example"} onCopy={() => copy("example", example)} />
         </Row>
       </Card>
 
       <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, lineHeight: 1.5, color: colors.detailValue }}>
         <Info size={14} strokeWidth={2} style={{ flex: "none", marginTop: 2 }} />
-        Lee el historial de Klipper (KDE Plasma 6). Funciona aunque Rimarc esté cerrado.
+        {tr(
+          "Lee el historial de Klipper (KDE Plasma 6). Funciona aunque Rimarc esté cerrado.",
+          "Reads the Klipper history (KDE Plasma 6). Works even when Rimarc is closed.",
+        )}
       </div>
     </>
   );
@@ -1272,6 +1354,7 @@ function CodeBlock({ code, copied, onCopy }: { code: string; copied: boolean; on
 
 function CopyChip({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
   const { colors } = useTheme();
+  const { tr } = useI18n();
   return (
     <button
       type="button"
@@ -1291,7 +1374,7 @@ function CopyChip({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
       }}
     >
       {copied ? <Check size={13} strokeWidth={2.4} /> : <Copy size={13} strokeWidth={2} />}
-      {copied ? "Copiado" : "Copiar"}
+      {copied ? tr("Copiado", "Copied") : tr("Copiar", "Copy")}
     </button>
   );
 }

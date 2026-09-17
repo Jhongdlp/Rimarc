@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
+import { emit, listen } from "@tauri-apps/api/event";
 import type { AgentStatus } from "../types";
+import { call, inTauri } from "./tauri";
 
 export type Lang = "es" | "en";
 
@@ -61,9 +63,11 @@ const STRINGS: Record<Lang, Strings> = {
     status: {
       running: "Ejecutando",
       thinking: "Pensando",
-      waitinginput: "Esperando entrada",
+      waitinginput: "Te pregunta",
       idle: "Inactivo",
       toolexecuting: "Usando herramienta",
+      editing: "Editando",
+      done: "Terminado",
     },
   },
   en: {
@@ -90,9 +94,11 @@ const STRINGS: Record<Lang, Strings> = {
     status: {
       running: "Running",
       thinking: "Thinking",
-      waitinginput: "Waiting for input",
+      waitinginput: "Needs you",
       idle: "Idle",
       toolexecuting: "Running tool",
+      editing: "Editing",
+      done: "Done",
     },
   },
 };
@@ -106,11 +112,30 @@ function read(): Lang {
 let lang: Lang = read();
 const listeners = new Set<() => void>();
 
-export function setLang(next: Lang) {
-  if (next === lang) return;
+// Cada ventana tiene su copia de este modulo: el cambio viaja como evento de
+// Tauri para que el idioma sea global (notch, tienda y portapapeles).
+const SYNC_EVENT = "rimarc://lang";
+
+function apply(next: Lang) {
+  if (next === lang) return false;
   lang = next;
   localStorage.setItem(KEY, next);
   listeners.forEach((fn) => fn());
+  return true;
+}
+
+export function setLang(next: Lang) {
+  if (!apply(next) || !inTauri) return;
+  void emit(SYNC_EVENT, next);
+  void call("set_tray_lang", { lang: next });
+}
+
+if (inTauri) {
+  // Los menus nativos nacen en español: cada ventana les dice el idioma al cargar.
+  void call("set_tray_lang", { lang });
+  void listen<Lang>(SYNC_EVENT, ({ payload }) => {
+    if (payload === "es" || payload === "en") apply(payload);
+  });
 }
 
 function subscribe(fn: () => void) {
@@ -118,8 +143,11 @@ function subscribe(fn: () => void) {
   return () => listeners.delete(fn);
 }
 
-/** Idioma activo y diccionario. Cambiarlo repinta todo lo que llame a este hook. */
-export function useI18n(): { lang: Lang; t: Strings } {
+/**
+ * Idioma activo y diccionario. Cambiarlo repinta todo lo que llame a este hook.
+ * `tr(es, en)` es para textos sueltos de una sola pantalla, que no merecen clave.
+ */
+export function useI18n(): { lang: Lang; t: Strings; tr: (es: string, en: string) => string } {
   const current = useSyncExternalStore(subscribe, () => lang);
-  return { lang: current, t: STRINGS[current] };
+  return { lang: current, t: STRINGS[current], tr: (es, en) => (current === "es" ? es : en) };
 }

@@ -729,12 +729,26 @@ fn toggle_clipboard_window(app: tauri::AppHandle, target_x: Option<f64>) -> Resu
 /// Comando con el que un cliente MCP arranca el servidor del portapapeles. Es la
 /// ruta real de este binario: en una AppImage `current_exe` apunta al montaje
 /// temporal, que cambia en cada arranque, y la ruta estable es `$APPIMAGE`.
+/// Si el binario esta en el `PATH` (instalado con paquete) basta con su nombre,
+/// y el comando copiado vale para cualquier usuario, no solo para este `$HOME`.
 #[tauri::command]
 fn mcp_command() -> String {
-    std::env::var("APPIMAGE")
-        .ok()
-        .or_else(|| std::env::current_exe().ok().map(|p| p.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| "rimarc".into())
+    if let Ok(p) = std::env::var("APPIMAGE") {
+        return p;
+    }
+    let Ok(exe) = std::env::current_exe().and_then(std::fs::canonicalize) else {
+        return "rimarc".into();
+    };
+    let name = exe.file_name().unwrap_or_default();
+    let on_path = std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path)
+            .any(|dir| std::fs::canonicalize(dir.join(name)).is_ok_and(|p| p == exe))
+    });
+    if on_path {
+        name.to_string_lossy().into_owned()
+    } else {
+        exe.to_string_lossy().into_owned()
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -781,6 +795,11 @@ fn open_clipboard_settings(app: tauri::AppHandle) -> Result<(), String> {
             }
             let _ = win.show();
             let _ = win.set_focus();
+            // Ya centrada al mapearse: soltar `CenterAlways` o la devuelve al
+            // centro cada vez que se arrastra.
+            if let Ok(gtk_win) = win.gtk_window() {
+                gtk_win.set_position(gtk::WindowPosition::None);
+            }
         });
     }
     #[cfg(not(target_os = "linux"))]
@@ -790,6 +809,31 @@ fn open_clipboard_settings(app: tauri::AppHandle) -> Result<(), String> {
         let _ = window.set_focus();
     }
     Ok(())
+}
+
+/// `(es, en)` de cada entrada del menu de la bandeja, en el orden de `TrayItems`.
+const TRAY_TEXT: [(&str, &str); 3] = [
+    ("Abrir Tienda de Componentes", "Open Component Store"),
+    ("Mostrar / Ocultar Notch", "Show / Hide Notch"),
+    ("Salir de Rimarc", "Quit Rimarc"),
+];
+const TRAY_TOOLTIP: (&str, &str) = ("Rimarc - Tienda de Componentes e Isla Dinámica", "Rimarc - Component Store and Dynamic Island");
+
+struct TrayItems([MenuItem<tauri::Wry>; 3]);
+
+/// El idioma lo elige el front (ajustes de la tienda); los menus nativos lo siguen.
+#[tauri::command]
+fn set_tray_lang(app: tauri::AppHandle, lang: String) {
+    let en = lang == "en";
+    clipboard_tray::set_english(en);
+    if let Some(items) = app.try_state::<TrayItems>() {
+        for (item, (es, en_text)) in items.0.iter().zip(TRAY_TEXT) {
+            let _ = item.set_text(if en { en_text } else { es });
+        }
+    }
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_tooltip(Some(if en { TRAY_TOOLTIP.1 } else { TRAY_TOOLTIP.0 }));
+    }
 }
 
 #[tauri::command]
@@ -880,14 +924,16 @@ pub fn run() {
             }
 
             // Crear menú para el icono en la bandeja del sistema (System Tray de Rimarc)
-            let store_item = MenuItem::with_id(app, "open_store", "Abrir Tienda de Componentes", true, None::<&str>)?;
-            let toggle_item = MenuItem::with_id(app, "toggle", "Mostrar / Ocultar Notch", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Salir de Rimarc", true, None::<&str>)?;
+            // Textos en español: el front los traduce con `set_tray_lang` al cargar.
+            let store_item = MenuItem::with_id(app, "open_store", TRAY_TEXT[0].0, true, None::<&str>)?;
+            let toggle_item = MenuItem::with_id(app, "toggle", TRAY_TEXT[1].0, true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", TRAY_TEXT[2].0, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&store_item, &toggle_item, &quit_item])?;
+            app.manage(TrayItems([store_item, toggle_item, quit_item]));
 
-            let mut tray_builder = TrayIconBuilder::new()
+            let mut tray_builder = TrayIconBuilder::with_id("main")
                 .menu(&menu)
-                .tooltip("Rimarc - Tienda de Componentes e Isla Dinámica")
+                .tooltip(TRAY_TOOLTIP.0)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open_store" => {
@@ -1006,6 +1052,7 @@ pub fn run() {
             open_clipboard_item,
             open_clipboard_settings,
             close_clipboard_settings,
+            set_tray_lang,
             set_clipboard_content,
             set_clipboard_image,
             delete_clipboard_item,

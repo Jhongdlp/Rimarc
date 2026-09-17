@@ -5,6 +5,7 @@ import { POPOVER } from "../design/tokens";
 import { Popover, PopoverHeader } from "./Popover";
 import { borderColorFor, useClipboardPrefs, useTheme } from "../lib/theme";
 import { call } from "../lib/tauri";
+import { useI18n, type Lang } from "../lib/i18n";
 import { useClipboard } from "../tools/clipboard/useClipboard";
 import type { ClipboardItem } from "../tools/clipboard/types";
 import type { Anchor } from "../lib/placement";
@@ -38,6 +39,7 @@ export function ClipboardWidget() {
   const { colors, isDark } = useTheme();
   const prefs = useClipboardPrefs();
   const t = useText();
+  const { tr } = useI18n();
   const clipboard = useClipboard();
   const [confirmClear, setConfirmClear] = useState(false);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -45,6 +47,10 @@ export function ClipboardWidget() {
   const searchRef = useRef<HTMLInputElement>(null);
   /** Arrastrando un clip hacia otra app: ni perder el foco ni soltar cierran la carta a destiempo. */
   const dragging = useRef(false);
+  /** Carta fijada: perder el foco o copiar ya no la ocultan (Esc y la bandeja si). */
+  const [pinned, setPinned] = useState(false);
+  const pinnedRef = useRef(false);
+  pinnedRef.current = pinned;
 
   // La carta se vacia (remonte cerrado, sin animacion) *antes* de ocultar la
   // ventana: el webview oculto conserva su ultimo frame y, si era la carta
@@ -80,7 +86,7 @@ export function ClipboardWidget() {
       });
     };
     const leave = () => {
-      if (!dragging.current) hide();
+      if (!dragging.current && !pinnedRef.current) hide();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
@@ -134,7 +140,7 @@ export function ClipboardWidget() {
 
   const copy = async (item: ClipboardItem) => {
     await clipboard.copyItem(item);
-    if (prefs.closeOnCopy) setTimeout(close, 200);
+    if (prefs.closeOnCopy && !pinned) setTimeout(close, 200);
   };
 
   const clear = async () => {
@@ -198,14 +204,32 @@ export function ClipboardWidget() {
       >
         {/* Margen extra sobre el `padX` de la carta, que a este ancho se queda justo. */}
         <div style={{ position: "absolute", inset: "0 12px" }}>
-          <PopoverHeader icon={<ClipGlyph color={colors.icon} />} title="Portapapeles" />
+          <PopoverHeader icon={<ClipGlyph color={colors.icon} />} title={tr("Portapapeles", "Clipboard")} />
+
+          {/* Fijar la carta: a la izquierda de Ajustes. */}
+          {!confirmClear && <button
+            type="button"
+            onClick={() => setPinned((p) => !p)}
+            title={pinned ? tr("Desfijar portapapeles", "Unpin clipboard") : tr("Fijar portapapeles", "Pin clipboard")}
+            style={{
+              ...bare,
+              position: "absolute",
+              top: POPOVER.headerTop,
+              right: 60,
+              height: POPOVER.icon,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <PinGlyph color={pinned ? (prefs.accent ?? colors.detailLabel) : colors.detailLabel} filled={pinned} />
+          </button>}
 
           {/* Ajustes: cierra la carta y abre su propia ventana, centrada. Se aparta
               mientras "¿Vaciar?" ocupa su sitio. */}
           {!confirmClear && <button
             type="button"
             onClick={() => void call("open_clipboard_settings")}
-            title="Ajustes"
+            title={tr("Ajustes", "Settings")}
             style={{
               ...bare,
               position: "absolute",
@@ -223,7 +247,7 @@ export function ClipboardWidget() {
           <button
             type="button"
             onClick={clear}
-            title="Vaciar historial"
+            title={tr("Vaciar historial", "Clear history")}
             style={{
               ...bare,
               position: "absolute",
@@ -239,15 +263,15 @@ export function ClipboardWidget() {
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            {confirmClear ? "¿Vaciar?" : <TrashGlyph color={DANGER} size={19} />}
+            {confirmClear ? tr("¿Vaciar?", "Clear?") : <TrashGlyph color={DANGER} size={19} />}
           </button>
 
           {/* Pestañas: solo texto; la activa se subraya con una raya que se desliza. */}
           <div style={{ position: "absolute", top: TABS_TOP, left: 0, display: "flex", gap: 18 }}>
             {(
               [
-                ["recent", "Recientes", clipboard.totalCount],
-                ["pinned", "Fijados", pinnedCount],
+                ["recent", tr("Recientes", "Recent"), clipboard.totalCount],
+                ["pinned", tr("Fijados", "Pinned"), pinnedCount],
               ] as const
             ).map(([id, label, count]) => {
               const active = tab === id;
@@ -298,7 +322,7 @@ export function ClipboardWidget() {
             ref={searchRef}
             value={clipboard.searchQuery}
             onChange={(e) => clipboard.setSearchQuery(e.target.value)}
-            placeholder="Buscar"
+            placeholder={tr("Buscar", "Search")}
             spellCheck={false}
             style={{
               position: "absolute",
@@ -341,7 +365,11 @@ export function ClipboardWidget() {
                   color: colors.detailValue,
                 }}
               >
-                {clipboard.searchQuery ? "Sin coincidencias" : tab === "pinned" ? "Nada fijado" : "Vacío"}
+                {clipboard.searchQuery
+                  ? tr("Sin coincidencias", "No matches")
+                  : tab === "pinned"
+                    ? tr("Nada fijado", "Nothing pinned")
+                    : tr("Vacío", "Empty")}
               </div>
             ) : (
               rows()
@@ -378,6 +406,7 @@ function Row({
 }) {
   const { colors } = useTheme();
   const t = useText();
+  const { lang, tr } = useI18n();
   const { accent, density, previewLines } = useClipboardPrefs();
   const [over, setOver] = useState(false);
   /** Texto en edicion; `null` = la fila normal. */
@@ -392,18 +421,18 @@ function Row({
   // comprueba que la ruta exista antes de abrir nada.
   const openLabel =
     item.kind === "url"
-      ? "Abrir en el navegador"
+      ? tr("Abrir en el navegador", "Open in browser")
       : item.kind === "image"
-        ? "Abrir imagen"
+        ? tr("Abrir imagen", "Open image")
         : item.line_count <= 1 && /^(\/|~\/|file:\/\/)/.test(t0)
-          ? "Abrir ubicación"
+          ? tr("Abrir ubicación", "Open location")
           : null;
   const mono = item.kind === "code" || item.kind === "url";
   const meta = copied
-    ? "Copiado"
+    ? tr("Copiado", "Copied")
     : item.kind === "image"
-      ? `Imagen  ·  ${item.preview}`
-      : [KIND[item.kind], `${item.char_count} car.`, item.line_count > 1 && `${item.line_count} lín.`]
+      ? `${KIND[lang].image}  ·  ${item.preview}`
+      : [KIND[lang][item.kind], `${item.char_count} ${tr("car.", "chars")}`, item.line_count > 1 && `${item.line_count} ${tr("lín.", "lines")}`]
           .filter(Boolean)
           .join("  ·  ");
 
@@ -577,8 +606,8 @@ function Row({
         >
           {editing ? (
             <>
-              <IconButton title="Cancelar (Esc)" onClick={() => setDraft(null)} glyph={(c) => <X size={18} color={c} strokeWidth={1.8} />} />
-              <IconButton title="Guardar (Ctrl + Enter)" onClick={save} glyph={(c) => <Check size={18} color={c} strokeWidth={2} />} />
+              <IconButton title={tr("Cancelar (Esc)", "Cancel (Esc)")} onClick={() => setDraft(null)} glyph={(c) => <X size={18} color={c} strokeWidth={1.8} />} />
+              <IconButton title={tr("Guardar (Ctrl + Enter)", "Save (Ctrl + Enter)")} onClick={save} glyph={(c) => <Check size={18} color={c} strokeWidth={2} />} />
             </>
           ) : (
           <>
@@ -590,17 +619,17 @@ function Row({
             />
           )}
           {over && item.kind !== "image" && (
-            <IconButton title="Editar" onClick={() => setDraft(item.text)} glyph={(c) => <Pencil size={17} color={c} strokeWidth={1.8} />} />
+            <IconButton title={tr("Editar", "Edit")} onClick={() => setDraft(item.text)} glyph={(c) => <Pencil size={17} color={c} strokeWidth={1.8} />} />
           )}
           {(over || item.pinned) && (
             <IconButton
-              title={item.pinned ? "Desfijar" : "Fijar"}
+              title={item.pinned ? tr("Desfijar", "Unpin") : tr("Fijar", "Pin")}
               onClick={onPin}
               active={item.pinned}
               glyph={(c) => <PinGlyph color={c} filled={item.pinned} />}
             />
           )}
-          {over && <IconButton title="Eliminar" onClick={onDelete} glyph={() => <TrashGlyph color={DANGER} size={18} />} />}
+          {over && <IconButton title={tr("Eliminar", "Delete")} onClick={onDelete} glyph={() => <TrashGlyph color={DANGER} size={18} />} />}
           </>
           )}
         </span>
@@ -609,12 +638,9 @@ function Row({
   );
 }
 
-const KIND: Record<ClipboardItem["kind"], string> = {
-  code: "Código",
-  url: "Enlace",
-  color: "Color",
-  text: "Texto",
-  image: "Imagen",
+const KIND: Record<Lang, Record<ClipboardItem["kind"], string>> = {
+  es: { code: "Código", url: "Enlace", color: "Color", text: "Texto", image: "Imagen" },
+  en: { code: "Code", url: "Link", color: "Color", text: "Text", image: "Image" },
 };
 
 const bare = {

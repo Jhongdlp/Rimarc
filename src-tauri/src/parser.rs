@@ -42,6 +42,8 @@ pub struct SessionAccum {
     pub model: Option<String>,
     pub last_action: Option<String>,
     pub last_timestamp: Option<String>,
+    /// Herramienta pedida cuyo resultado aun no ha llegado.
+    pub pending_tool: Option<String>,
     /// `message.id` ya contados. Claude Code reescribe la misma respuesta varias
     /// veces (sidechains, reintentos); sin esto se cuenta doble.
     pub seen: HashSet<String>,
@@ -179,10 +181,15 @@ fn accumulate_session(acc: &mut SessionAccum, path: &Path) {
 
         if let Some(items) = msg.get("content").and_then(|v| v.as_array()) {
             for item in items {
-                if item.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
-                    if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                        acc.last_action = Some(format!("Tool: {}", name));
+                match item.get("type").and_then(|v| v.as_str()) {
+                    Some("tool_use") => {
+                        if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                            acc.last_action = Some(format!("Tool: {}", name));
+                            acc.pending_tool = Some(name.to_string());
+                        }
                     }
+                    Some("tool_result") => acc.pending_tool = None,
+                    _ => {}
                 }
             }
         }
@@ -260,6 +267,13 @@ pub fn parse_claude_project_metrics(
     }
 
     metrics
+}
+
+/// Herramienta pendiente en el transcript `path`, leyendolo de forma incremental.
+pub fn claude_pending_tool(cache: &mut MetricsCache, path: &Path) -> Option<String> {
+    let acc = cache.sessions.entry(path.to_path_buf()).or_default();
+    accumulate_session(acc, path);
+    acc.pending_tool.clone()
 }
 
 fn newest_jsonl(dir: &Path) -> Option<PathBuf> {
@@ -949,6 +963,18 @@ mod tests {
             r#"{{"timestamp":"2026-08-31T17:35:56Z","message":{{"id":"{}","model":"claude-opus-5","usage":{{"input_tokens":{},"output_tokens":{},"cache_creation_input_tokens":{},"cache_read_input_tokens":{}}}}}}}"#,
             id, input, out, cw, cr
         )
+    }
+
+    #[test]
+    fn pending_tool_clears_on_result() {
+        let path = std::env::temp_dir().join("notch_pending_test.jsonl");
+        let ask = r#"{"message":{"content":[{"type":"tool_use","name":"Edit"}]}}"#;
+        std::fs::write(&path, format!("{ask}\n")).unwrap();
+        let mut cache = MetricsCache::default();
+        assert_eq!(claude_pending_tool(&mut cache, &path).as_deref(), Some("Edit"));
+        let done = r#"{"message":{"content":[{"type":"tool_result"}]}}"#;
+        std::fs::write(&path, format!("{ask}\n{done}\n")).unwrap();
+        assert_eq!(claude_pending_tool(&mut cache, &path), None);
     }
 
     #[test]

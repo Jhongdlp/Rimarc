@@ -251,8 +251,8 @@ export const SETTINGS = {
   control: 24,
   /** Del centro de una etiqueta al centro de la siguiente. */
   rowPitch: 52,
-  /** Filas del panel: idioma, tema, auto-ocultado y posicion. */
-  rows: 4,
+  /** Filas del panel: tema, auto-ocultado y posicion. El idioma vive en la tienda. */
+  rows: 3,
 } as const;
 
 /** Con 5 agentes el notch mas el boton ya rozan los 600 px de lienzo. */

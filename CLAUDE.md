@@ -74,12 +74,12 @@ The front is written *once*, for a notch on the right edge growing downwards. Th
 The detail card grows a **drawer**: a wider rounded box that shares the card's
 surface, tucked `POPOVER.drawer.overlap` px behind its base so the two read as
 one silhouette (no path surgery — the growth is an animated `inset()`). It opens
-on hovering the chevron at the foot of the card and holds the **roster**: one
-row per live agent — glyph, project, what it is running right now, and its daily
-bar, which doubles as the row separator. Hovering a row swaps what the card
-counts but *not* where the tail points: re-anchoring would slide the panel out
-from under the pointer, so `DetailPopover` keeps its own `shown` index over the
-`index` prop that the ring hover sets.
+on hovering the chevron at the foot of the card and lists every live **instance
+of that same agent** (`AgentSession.instances`, built by
+`scanner.rs::list_instances`, children of a same-type agent skipped): project,
+path and status. For Claude the status is real — `~/.claude/sessions/<pid>.json`
+says busy/idle and the transcript's pending `tool_use` says editing / tool /
+asking (`AskUserQuestion`); other agents fall back to the CPU heuristic.
 
 The drawer bleeds sideways *away from the tail*, and on a bottom-edge notch it
 grows upwards instead of down, or it would end up under the bar. `STAGE_DEPTH`
@@ -191,7 +191,7 @@ el gasto y `accentFor` vira a naranja por encima de 70.
 - Anadir un `AgentType` toca los dos lados: `models.rs`, `src/types.ts`, los dos mapas de `AGENT_COLOR_*` en `src/design/tokens.ts` (son `Record<AgentType, string>` exhaustivos, si falta uno `pnpm build` falla) y el `switch` de `AgentIcon`.
 - `parse_opencode_metrics` depende del binario `sqlite3` en el `PATH`; sin el, las metricas de OpenCode salen a cero en silencio.
 - El cajon del `Popover` solo se monta con la carta abierta: recogido, su `inset()` deja una fila de subpixel sin recortar y, sin carta encima que la tape, sale una raya de `surface` de 220 px cruzando el escritorio.
-- UI copy is Spanish ("Cuota Diaria", "Límite Semanal", "Sin agentes activos"); match that when adding strings.
+- UI copy is bilingual. El idioma se elige en los ajustes de la tienda y es global: `setLang` lo difunde a todas las ventanas por el evento `rimarc://lang`. Textos nuevos: clave en `Strings` (`src/lib/i18n.ts`) si se reutilizan, `tr("es", "en")` de `useI18n()` si son de una sola pantalla. El tema de la tienda es propio (`StoreThemeScope`), como el del portapapeles.
 
 ## Styling
 

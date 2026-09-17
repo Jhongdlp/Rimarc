@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
-import { Minus, Puzzle, Search, X } from "lucide-react";
+import { Minus, Search, Settings, X } from "lucide-react";
 import { inTauri, call } from "../../lib/tauri";
 import { useActiveToolId, setActiveTool, getAllTools } from "../../lib/toolStore";
 import type { NotchTool, ToolCategory } from "../../tools/types";
-import type { AgentType } from "../../types";
 import { clipboardTool } from "../../tools/clipboard";
-import { FONT_FAMILY, agentColor } from "../../design/tokens";
-import { useTheme } from "../../lib/theme";
+import { FONT_FAMILY } from "../../design/tokens";
+import { useTheme, type ThemeMode } from "../../lib/theme";
+import { LANGS, setLang, useI18n } from "../../lib/i18n";
 import rimarcLogo from "../../../assets/logo.png";
 
 export interface StoreAppProps {
@@ -16,6 +16,8 @@ export interface StoreAppProps {
 export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
   const [isNotchActive, setIsNotchActive] = useState(false);
   const { colors } = useTheme();
+  const { lang, tr } = useI18n();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [category, setCategory] = useState<ToolCategory | "all">("all");
   const activeId = useActiveToolId();
@@ -103,13 +105,11 @@ export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
   const filteredTools = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return tools;
-    return tools.filter(
-      (tool) =>
-        tool.name.toLowerCase().includes(q) ||
-        tool.id.toLowerCase().includes(q) ||
-        (tool.tagline && tool.tagline.toLowerCase().includes(q)),
-    );
-  }, [tools, searchQuery]);
+    return tools.filter((tool) => {
+      const text = lang === "en" ? tool.en : tool;
+      return text.name.toLowerCase().includes(q) || tool.id.toLowerCase().includes(q) || text.tagline.toLowerCase().includes(q);
+    });
+  }, [tools, searchQuery, lang]);
 
   const visibleTools = category === "all" ? filteredTools : filteredTools.filter((t) => t.category === category);
   const categories = CATEGORIES.filter((c) => c.id === "all" || tools.some((t) => t.category === c.id));
@@ -152,10 +152,10 @@ export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
         />
         <div data-tauri-drag-region style={{ minWidth: 0 }}>
           <div data-tauri-drag-region style={{ fontSize: 16, fontWeight: 600, color: colors.title }}>
-            Componentes
+            {tr("Componentes", "Components")}
           </div>
           <div data-tauri-drag-region style={{ marginTop: 2, fontSize: 12, color: colors.detailValue }}>
-            Elige qué vive en tu notch
+            {tr("Elige qué vive en tu notch", "Choose what lives in your notch")}
           </div>
         </div>
 
@@ -179,7 +179,7 @@ export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar"
+            placeholder={tr("Buscar", "Search")}
             spellCheck={false}
             style={{
               flex: 1,
@@ -197,7 +197,7 @@ export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
           {searchQuery && (
             <button
               type="button"
-              aria-label="Limpiar búsqueda"
+              aria-label={tr("Limpiar búsqueda", "Clear search")}
               onClick={() => setSearchQuery("")}
               style={{ ...bare, display: "flex", padding: 2, borderRadius: 10, color: colors.detailValue }}
             >
@@ -207,14 +207,19 @@ export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
         </label>
 
         <div style={{ display: "flex", gap: 6, marginLeft: 6 }}>
-          <WindowButton title="Minimizar" onClick={handleMinimize}>
+          <WindowButton title={tr("Ajustes", "Settings")} onClick={() => setSettingsOpen((o) => !o)}>
+            <Settings size={15} strokeWidth={2} />
+          </WindowButton>
+          <WindowButton title={tr("Minimizar", "Minimize")} onClick={handleMinimize}>
             <Minus size={15} strokeWidth={2.2} />
           </WindowButton>
-          <WindowButton title="Cerrar a la bandeja" onClick={handleClose}>
+          <WindowButton title={tr("Cerrar a la bandeja", "Close to tray")} onClick={handleClose}>
             <X size={15} strokeWidth={2.2} />
           </WindowButton>
         </div>
       </header>
+
+      {settingsOpen && <StoreSettings onClose={() => setSettingsOpen(false)} />}
 
       {/* Filtros por categoria: solo las que tienen algun componente. */}
       <nav style={{ flex: "none", padding: "4px 24px 16px", display: "flex", gap: 6 }}>
@@ -242,7 +247,7 @@ export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
                 transition: "background 120ms ease, color 120ms ease",
               }}
             >
-              {c.label}
+              {tr(c.label, c.en)}
               <span style={{ opacity: 0.6, fontVariantNumeric: "tabular-nums" }}>{count}</span>
             </button>
           );
@@ -266,7 +271,9 @@ export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
           >
             <Search size={26} strokeWidth={1.6} />
             <div style={{ fontSize: 13, fontWeight: 600, color: colors.detailLabel }}>
-              {searchQuery ? `Nada para «${searchQuery}»` : "Nada en esta categoría"}
+              {searchQuery
+                ? tr(`Nada para «${searchQuery}»`, `Nothing for “${searchQuery}”`)
+                : tr("Nada en esta categoría", "Nothing in this category")}
             </div>
             <button
               type="button"
@@ -285,7 +292,7 @@ export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
                 color: colors.detailLabel,
               }}
             >
-              Ver todos
+              {tr("Ver todos", "Show all")}
             </button>
           </div>
         ) : (
@@ -309,13 +316,101 @@ export function StoreApp({ onToggleView = () => {} }: StoreAppProps) {
   );
 }
 
-const CATEGORIES: { id: ToolCategory | "all"; label: string }[] = [
-  { id: "all", label: "Todos" },
-  { id: "ai", label: "IA" },
-  { id: "productivity", label: "Productividad" },
-  { id: "utilities", label: "Utilidades" },
-  { id: "system", label: "Sistema" },
+const CATEGORIES: { id: ToolCategory | "all"; label: string; en: string }[] = [
+  { id: "all", label: "Todos", en: "All" },
+  { id: "ai", label: "IA", en: "AI" },
+  { id: "productivity", label: "Productividad", en: "Productivity" },
+  { id: "utilities", label: "Utilidades", en: "Utilities" },
+  { id: "system", label: "Sistema", en: "System" },
 ];
+
+/**
+ * Ajustes de la tienda, desplegados bajo la cabecera. El tema es solo de esta
+ * ventana; el idioma es global y lo difunde `setLang` al resto.
+ */
+function StoreSettings({ onClose }: { onClose: () => void }) {
+  const { colors, theme, setTheme } = useTheme();
+  const { lang, t } = useI18n();
+  return (
+    <>
+      {/* Fondo invisible: pulsar fuera cierra el panel. */}
+      <div onMouseDown={onClose} style={{ position: "absolute", inset: 0, zIndex: 10 }} />
+      <section
+        style={{
+          position: "absolute",
+          top: 60,
+          right: 16,
+          zIndex: 11,
+          width: 280,
+          padding: 16,
+          borderRadius: 14,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+          background: colors.surface,
+          boxShadow: `0 12px 32px rgba(0,0,0,0.3), inset 0 0 0 1px ${colors.track}`,
+        }}
+      >
+        <Segmented
+          label={t.theme}
+          options={[
+            { id: "light", label: t.themeLight },
+            { id: "dark", label: t.themeDark },
+            { id: "system", label: t.themeSystem },
+          ]}
+          selected={theme}
+          onSelect={(id) => setTheme(id as ThemeMode)}
+        />
+        <Segmented label={t.language} options={LANGS} selected={lang} onSelect={(id) => setLang(id as "es" | "en")} />
+      </section>
+    </>
+  );
+}
+
+function Segmented({
+  label,
+  options,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  options: { id: string; label: string }[];
+  selected: string;
+  onSelect: (id: string) => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: colors.detailValue }}>{label}</span>
+      <div style={{ display: "flex", padding: 3, gap: 3, borderRadius: 10, background: colors.track }}>
+        {options.map((o) => {
+          const on = o.id === selected;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => onSelect(o.id)}
+              style={{
+                ...bare,
+                flex: 1,
+                height: 28,
+                borderRadius: 7,
+                textAlign: "center",
+                fontSize: 12.5,
+                fontWeight: 600,
+                background: on ? colors.surface : "transparent",
+                color: on ? colors.detailLabel : colors.detailValue,
+                transition: "background 120ms ease, color 120ms ease",
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const bare = {
   border: "none",
@@ -372,6 +467,8 @@ function ComponentCard({
   onActivate: () => void;
 }) {
   const { colors, isDark } = useTheme();
+  const { lang, tr } = useI18n();
+  const text = lang === "en" ? tool.en : tool;
   const [hover, setHover] = useState(false);
   const Icon = tool.icon;
   return (
@@ -402,7 +499,7 @@ function ComponentCard({
             : "radial-gradient(120% 90% at 50% 0%, #f5f5f7 0%, #e9e9ee 100%)",
         }}
       >
-        <Thumbnail toolId={tool.id} />
+        <img src={tool.thumbnail} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
       </div>
 
       <div style={{ padding: "14px 6px 4px", display: "flex", gap: 12, alignItems: "flex-start" }}>
@@ -423,7 +520,7 @@ function ComponentCard({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <h3
-              title={tool.name}
+              title={text.name}
               style={{
                 margin: 0,
                 fontSize: 14,
@@ -434,9 +531,9 @@ function ComponentCard({
                 textOverflow: "ellipsis",
               }}
             >
-              {tool.name}
+              {text.name}
             </h3>
-            {tool.badge && (
+            {text.badge && (
               <span
                 style={{
                   flex: "none",
@@ -448,12 +545,12 @@ function ComponentCard({
                   color: colors.detailValue,
                 }}
               >
-                {tool.badge}
+                {text.badge}
               </span>
             )}
           </div>
           <p
-            title={tool.description}
+            title={text.description}
             style={{
               margin: "4px 0 0",
               fontSize: 12,
@@ -465,7 +562,7 @@ function ComponentCard({
               overflow: "hidden",
             }}
           >
-            {tool.tagline}
+            {text.tagline}
           </p>
         </div>
       </div>
@@ -491,117 +588,12 @@ function ComponentCard({
             }}
           />
           <span style={{ color: isActive ? colors.detailLabel : colors.detailValue }}>
-            {isActive ? "Activo" : "Inactivo"}
+            {isActive ? tr("Activo", "Active") : tr("Inactivo", "Inactive")}
           </span>
         </span>
         <Switch on={isActive} onChange={onActivate} />
       </div>
     </article>
-  );
-}
-
-/** Miniaturas vivas de cada componente, con el mismo trazo que el notch real. */
-function Thumbnail({ toolId }: { toolId: string }) {
-  const { colors, isDark } = useTheme();
-
-  if (toolId === "ai-agents") {
-    const rings: [AgentType, number][] = [
-      ["claude", 73],
-      ["codex", 21],
-      ["antigravity", 52],
-    ];
-    return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-        <div
-          style={{
-            padding: "10px 16px",
-            borderRadius: 999,
-            display: "flex",
-            gap: 14,
-            background: colors.surface,
-            boxShadow: `0 8px 24px rgba(0,0,0,${isDark ? 0.5 : 0.12}), inset 0 0 0 1px ${colors.track}`,
-          }}
-        >
-          {rings.map(([agent, pct]) => {
-            const c = 2 * Math.PI * 11;
-            return (
-              <div key={agent} style={{ position: "relative", width: 30, height: 30, display: "grid", placeItems: "center" }}>
-                <svg width={30} height={30} viewBox="0 0 30 30" style={{ transform: "rotate(-90deg)" }}>
-                  <circle cx={15} cy={15} r={11} fill="none" stroke={colors.track} strokeWidth={3} />
-                  <circle
-                    cx={15}
-                    cy={15}
-                    r={11}
-                    fill="none"
-                    stroke={agentColor(agent, isDark)}
-                    strokeWidth={3}
-                    strokeDasharray={c}
-                    strokeDashoffset={c * (1 - pct / 100)}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <span style={{ position: "absolute", fontSize: 8.5, fontWeight: 700, color: colors.detailLabel }}>{pct}</span>
-              </div>
-            );
-          })}
-        </div>
-        <span style={{ fontSize: 11, fontWeight: 500, color: colors.detailValue }}>3 agentes activos</span>
-      </div>
-    );
-  }
-
-  if (toolId === "clipboard-manager") {
-    return (
-      <div
-        style={{
-          width: "78%",
-          padding: "10px 14px 4px",
-          borderRadius: 14,
-          background: colors.surface,
-          boxShadow: `0 8px 24px rgba(0,0,0,${isDark ? 0.5 : 0.12}), inset 0 0 0 1px ${colors.track}`,
-        }}
-      >
-        <div style={{ display: "flex", gap: 12, fontSize: 10.5, fontWeight: 600 }}>
-          <span style={{ paddingBottom: 4, color: colors.detailLabel, borderBottom: `2px solid ${colors.detailLabel}` }}>
-            Recientes
-          </span>
-          <span style={{ color: colors.detailValue }}>Fijados</span>
-        </div>
-        {[
-          ["pnpm dev:tauri", "Copiado", true],
-          ["https://kde.org/plasma", "Enlace  ·  22 car.", false],
-        ].map(([text, meta, mono]) => (
-          <div key={String(text)} style={{ padding: "7px 0", borderBottom: `1px solid ${colors.track}` }}>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                fontFamily: mono ? "ui-monospace, monospace" : "inherit",
-                color: colors.detailLabel,
-              }}
-            >
-              {text}
-            </div>
-            <div style={{ marginTop: 3, fontSize: 9.5, color: meta === "Copiado" ? "#30D158" : colors.detailValue }}>{meta}</div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <span
-      style={{
-        width: 52,
-        height: 52,
-        borderRadius: 14,
-        display: "grid",
-        placeItems: "center",
-        background: colors.track,
-      }}
-    >
-      <Puzzle size={22} color={colors.detailLabel} />
-    </span>
   );
 }
 

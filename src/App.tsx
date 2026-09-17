@@ -3,7 +3,7 @@ import { NotchBar } from "./components/NotchBar";
 import { StoreApp } from "./components/store/StoreApp";
 import { ClipboardWidget } from "./components/ClipboardWidget";
 import { ClipboardSettings } from "./components/ClipboardSettings";
-import { ClipboardThemeScope } from "./lib/theme";
+import { ClipboardThemeScope, StoreThemeScope } from "./lib/theme";
 import { getTauriWindowLabel } from "./lib/tauri";
 
 export default function App() {
@@ -45,12 +45,14 @@ export default function App() {
 
   // En la ventana 'store' de Tauri o en modo navegador de desarrollo, renderizar la tienda
   return (
-    <StoreApp
-      onToggleView={() => {
-        window.location.hash = "notch";
-        setLabel("main");
-      }}
-    />
+    <StoreThemeScope>
+      <StoreApp
+        onToggleView={() => {
+          window.location.hash = "notch";
+          setLabel("main");
+        }}
+      />
+    </StoreThemeScope>
   );
 }
 

@@ -95,14 +95,14 @@ export function resetClipboardPrefs() {
 
 /** Colores que ofrecen el acento y el borde: los del sistema de Apple, legibles en los dos temas. */
 export const PALETTE = [
-  { color: "#0A84FF", label: "Azul" },
-  { color: "#BF5AF2", label: "Morado" },
-  { color: "#FF375F", label: "Rosa" },
-  { color: "#FF453A", label: "Rojo" },
-  { color: "#FF9F0A", label: "Naranja" },
-  { color: "#FFD60A", label: "Amarillo" },
-  { color: "#30D158", label: "Verde" },
-  { color: "#64D2FF", label: "Cian" },
+  { color: "#0A84FF", label: "Azul", en: "Blue" },
+  { color: "#BF5AF2", label: "Morado", en: "Purple" },
+  { color: "#FF375F", label: "Rosa", en: "Pink" },
+  { color: "#FF453A", label: "Rojo", en: "Red" },
+  { color: "#FF9F0A", label: "Naranja", en: "Orange" },
+  { color: "#FFD60A", label: "Amarillo", en: "Yellow" },
+  { color: "#30D158", label: "Verde", en: "Green" },
+  { color: "#64D2FF", label: "Cian", en: "Cyan" },
 ];
 
 export const useClipboardPrefs = () => useSyncExternalStore(subscribe, () => currentPrefs);
@@ -177,6 +177,24 @@ export function ClipboardThemeScope({ children }: { children: ReactNode }) {
     { value: { mode: theme, set: (mode: ThemeMode) => setClipboardPrefs({ theme: mode }) } },
     children,
   );
+}
+
+/** Tema propio de la tienda, independiente del notch. Solo hay una ventana: no se difunde. */
+const STORE_KEY = "agentnotch.storeTheme";
+let storeTheme: ThemeMode = (() => {
+  const saved = localStorage.getItem(STORE_KEY);
+  return THEME_OPTIONS.some((o) => o.id === saved) ? (saved as ThemeMode) : read();
+})();
+
+function setStoreTheme(next: ThemeMode) {
+  storeTheme = next;
+  localStorage.setItem(STORE_KEY, next);
+  notify();
+}
+
+export function StoreThemeScope({ children }: { children: ReactNode }) {
+  const mode = useSyncExternalStore(subscribe, () => storeTheme);
+  return createElement(ThemeScopeCtx.Provider, { value: { mode, set: setStoreTheme } }, children);
 }
 
 export function useTheme(): {

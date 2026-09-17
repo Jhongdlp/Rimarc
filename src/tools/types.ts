@@ -40,8 +40,12 @@ export interface NotchTool<TState = unknown> {
   category: ToolCategory;
   /** Icono representativo para la galería */
   icon: ComponentType<{ size?: number; color?: string }>;
+  /** Miniatura de la tarjeta en la tienda, servida desde public/ */
+  thumbnail: string;
   /** Etiqueta destacada (ej: 'Oficial', 'Nuevo', 'Beta') */
   badge?: string;
+  /** Textos de la galeria en ingles; los de arriba son los de español. */
+  en: { name: string; tagline: string; description: string; badge?: string };
 
   /** Hook que provee el estado reactivo en tiempo real de la herramienta */
   useData: () => TState;

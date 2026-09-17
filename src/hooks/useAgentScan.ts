@@ -92,5 +92,6 @@ function sample(
     context_window_size: null,
     context_tokens: null,
     quota_live: false,
+    instances: [{ pid: 0, cwd: "", project_name: name, status: "running" }],
   };
 }

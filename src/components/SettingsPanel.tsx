@@ -4,7 +4,7 @@ import { GripHorizontal } from "lucide-react";
 import { POPOVER, SETTINGS, SETTINGS_HEIGHT, type ThemeColors } from "../design/tokens";
 import { Popover, PopoverHeader } from "./Popover";
 import { GearIcon } from "./icons/AgentIcon";
-import { LANGS, setLang, useI18n } from "../lib/i18n";
+import { useI18n } from "../lib/i18n";
 import type { Anchor } from "../lib/placement";
 import { AUTO_HIDE_OPTIONS, setAutoHide, useAutoHide } from "../lib/prefs";
 import { useTheme, type ThemeMode } from "../lib/theme";
@@ -35,7 +35,7 @@ export function SettingsPanel({
   onHoverStart,
   onHoverEnd,
 }: SettingsPanelProps) {
-  const { lang, t } = useI18n();
+  const { t } = useI18n();
   const { theme, setTheme, colors } = useTheme();
   const autoHide = useAutoHide();
 
@@ -51,15 +51,6 @@ export function SettingsPanel({
 
       <Row
         index={0}
-        label={t.language}
-        options={LANGS.map((o) => ({ id: o.id, label: o.label }))}
-        selected={lang}
-        colors={colors}
-        onSelect={(id) => setLang(id as "es" | "en")}
-      />
-
-      <Row
-        index={1}
         label={t.theme}
         options={[
           { id: "light", label: t.themeLight },
@@ -72,7 +63,7 @@ export function SettingsPanel({
       />
 
       <Row
-        index={2}
+        index={1}
         label={t.autoHide}
         options={AUTO_HIDE_OPTIONS.map((o) => ({ id: o.id, label: o.label ?? t.pinned }))}
         selected={autoHide.id}
@@ -80,7 +71,7 @@ export function SettingsPanel({
         onSelect={setAutoHide}
       />
 
-      <GripRow index={3} label={t.position} colors={colors} dragging={dragging} onDragStart={onDragStart} />
+      <GripRow index={2} label={t.position} colors={colors} dragging={dragging} onDragStart={onDragStart} />
     </Popover>
   );
 }

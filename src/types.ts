@@ -15,7 +15,16 @@ export type AgentStatus =
   | "thinking"
   | "waitinginput"
   | "idle"
-  | "toolexecuting";
+  | "toolexecuting"
+  | "editing"
+  | "done";
+
+export interface AgentInstance {
+  pid: number;
+  cwd: string;
+  project_name: string;
+  status: AgentStatus;
+}
 
 export interface AgentSession {
   id: string;
@@ -45,6 +54,8 @@ export interface AgentSession {
   context_tokens: number | null;
   /** false = los porcentajes son estimacion local, no la cuota real de la cuenta. */
   quota_live: boolean;
+  /** Todas las instancias vivas de este mismo tipo de agente. */
+  instances: AgentInstance[];
 }
 
 export interface SystemAgentSummary {

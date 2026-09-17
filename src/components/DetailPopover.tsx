@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { POPOVER, agentColor, drawerHeight } from "../design/tokens";
+import { MAX_ITEMS, POPOVER, agentColor, drawerHeight } from "../design/tokens";
 import { popoverHeight } from "../lib/popoverPath";
 import { Popover, PopoverHeader } from "./Popover";
 import { AgentIcon } from "./icons/AgentIcon";
@@ -8,7 +8,7 @@ import { UsageBar } from "./UsageBar";
 import { useI18n, type Strings } from "../lib/i18n";
 import type { Anchor } from "../lib/placement";
 import { useTheme } from "../lib/theme";
-import type { AgentSession } from "../types";
+import type { AgentInstance, AgentSession } from "../types";
 
 const CONTENT_W = POPOVER.width - POPOVER.padX * 2;
 const DRAWER = POPOVER.drawer;
@@ -16,7 +16,7 @@ const DRAWER = POPOVER.drawer;
 const CARD_HEIGHT = popoverHeight(2) + DRAWER.foot;
 
 export interface DetailPopoverProps {
-  /** Todos los agentes vivos: la carta muestra uno y el cajon la lista entera. */
+  /** Todos los agentes vivos; la carta y el cajon solo muestran el de `index`. */
   sessions: AgentSession[];
   /** Agente del anillo por el que se abrio, al que apunta la cola. */
   index: number;
@@ -28,9 +28,8 @@ export interface DetailPopoverProps {
 }
 
 /**
- * Carta de un agente — cuota diaria y semanal — con el cajon debajo, que es el
- * reparto: una fila por agente vivo, y elegir una cambia la carta. Sin el, para
- * comparar dos agentes hay que ir saltando de anillo en anillo.
+ * Carta de un agente — cuota diaria y semanal — con el cajon debajo, que lista
+ * cada instancia abierta de ese mismo agente con su ruta y su estado.
  */
 export function DetailPopover({
   sessions,
@@ -40,14 +39,12 @@ export function DetailPopover({
   onHoverStart,
   onHoverEnd,
 }: DetailPopoverProps) {
-  // Elegir en el cajon cambia lo que cuenta la carta, pero no a donde apunta la
-  // cola: mover el panel bajo el puntero lo sacaria de debajo del propio raton.
-  const [shown, setShown] = useState(index);
-  useEffect(() => setShown(index), [index]);
-  const session = sessions[shown] ?? sessions[0];
+  const session = sessions[index] ?? sessions[0];
   const { t } = useI18n();
   const { isDark, colors } = useTheme();
   const sections = buildSections(session, t);
+  // Solo las instancias de este agente; el lienzo no da para mas de MAX_ITEMS filas.
+  const instances = (session.instances ?? []).slice(0, MAX_ITEMS);
 
   // El cajon se abre al pasar por el boton y se recoge al cerrarse la carta:
   // asi no hace falta un temporizador para cruzar el hueco entre los dos, y la
@@ -63,10 +60,8 @@ export function DetailPopover({
       height={CARD_HEIGHT}
       open={open}
       drawerOpen={drawerOpen}
-      drawerHeight={drawerHeight(sessions.length)}
-      drawer={
-        <AgentRoster sessions={sessions} index={shown} onSelect={setShown} isDark={isDark} />
-      }
+      drawerHeight={drawerHeight(instances.length)}
+      drawer={<InstanceRoster session={session} instances={instances} isDark={isDark} />}
       onHoverStart={onHoverStart}
       onHoverEnd={onHoverEnd}
     >
@@ -157,45 +152,38 @@ export function DetailPopover({
 }
 
 /**
- * El reparto de agentes. Cada fila se lee de un vistazo sin leer: el glifo dice
- * cual es, la barra cuanto lleva gastado y el desvaido cual no es el elegido.
- * El texto solo esta para lo que un grafico no puede decir — el proyecto y la
- * herramienta que corre ahora mismo.
+ * Las instancias vivas del agente de la carta: una fila por sesion abierta, con
+ * su proyecto, su ruta y lo que esta haciendo. Las que ya acabaron quedan
+ * desvaidas para que salte a la vista cual trabaja o cual te espera.
  */
-function AgentRoster({
-  sessions,
-  index,
-  onSelect,
+function InstanceRoster({
+  session,
+  instances,
   isDark,
 }: {
-  sessions: AgentSession[];
-  index: number;
-  onSelect: (i: number) => void;
+  session: AgentSession;
+  instances: AgentInstance[];
   isDark: boolean;
 }) {
   const { t } = useI18n();
   const { colors } = useTheme();
-  const active = sessions[index];
+  const color = agentColor(session.agent_type, isDark);
 
   return (
     <>
-      {sessions.map((s, i) => {
-        const color = agentColor(s.agent_type, isDark);
-        const percent = Math.round(s.daily_percent ?? 0);
-        const chosen = i === index;
+      {instances.map((inst, i) => {
+        const resting = inst.status === "done" || inst.status === "idle";
         return (
           <div
-            key={s.id}
-            title={s.cwd}
-            onMouseEnter={() => onSelect(i)}
+            key={inst.pid}
+            title={inst.cwd}
             style={{
               position: "absolute",
               top: DRAWER.rowFirst + i * DRAWER.rowPitch,
               left: 0,
               right: 0,
               height: DRAWER.rowHeight,
-              opacity: chosen ? 1 : DRAWER.dim,
-              cursor: "pointer",
+              opacity: resting ? DRAWER.dim : 1,
               pointerEvents: "auto",
               transition: "opacity 140ms ease",
             }}
@@ -203,7 +191,7 @@ function AgentRoster({
             {/* Absoluto como el resto: en flujo, el glifo arrastra su caja de
                 linea y descuadra el alto de la fila. */}
             <span style={{ position: "absolute", top: 0, left: 0, lineHeight: 0 }}>
-              <AgentIcon type={s.agent_type} size={DRAWER.icon} color={color} />
+              <AgentIcon type={session.agent_type} size={DRAWER.icon} color={color} />
             </span>
 
             <span
@@ -218,7 +206,7 @@ function AgentRoster({
                 whiteSpace: "nowrap",
               }}
             >
-              {s.project_name || s.name}
+              {inst.project_name}
             </span>
 
             <span
@@ -229,14 +217,13 @@ function AgentRoster({
                 fontSize: DRAWER.text.value,
                 fontWeight: 600,
                 lineHeight: 1,
-                color,
-                fontVariantNumeric: "tabular-nums",
+                color: resting ? colors.detailValue : color,
+                whiteSpace: "nowrap",
               }}
             >
-              {percent}%
+              {t.status[inst.status] ?? inst.status}
             </span>
 
-            {/* Que hace y donde, en una linea: lo unico que no cabe en un grafico. */}
             <span
               style={{
                 position: "absolute",
@@ -252,25 +239,32 @@ function AgentRoster({
                 textOverflow: "ellipsis",
               }}
             >
-              {s.recent_action ?? t.status[s.status] ?? s.status}
-              <span style={{ opacity: 0.6 }}>{`  ${shortPath(s.cwd)}`}</span>
+              {shortPath(inst.cwd)}
             </span>
 
-            {/* La barra cierra la fila de lado a lado y hace de separador. */}
-            <div style={{ position: "absolute", top: DRAWER.rowHeight - DRAWER.bar, left: 0, right: 0 }}>
-              <MiniBar percent={percent} color={color} track={colors.track} />
-            </div>
+            {/* Separador de lado a lado. */}
+            <div
+              style={{
+                position: "absolute",
+                top: DRAWER.rowHeight - DRAWER.bar,
+                left: 0,
+                right: 0,
+                height: DRAWER.bar,
+                borderRadius: DRAWER.bar,
+                background: colors.track,
+              }}
+            />
           </div>
         );
       })}
 
-      {/* Cierre: lo que solo interesa del agente que se esta mirando. */}
+      {/* Cierre: modelo, contexto y coste del agente. */}
       <div
         style={{
           position: "absolute",
           left: 0,
           right: 0,
-          top: DRAWER.rowFirst + (sessions.length - 1) * DRAWER.rowPitch + DRAWER.rowHeight + 7,
+          top: DRAWER.rowFirst + Math.max(0, instances.length - 1) * DRAWER.rowPitch + DRAWER.rowHeight + 7,
           fontSize: DRAWER.text.meta,
           fontWeight: 500,
           lineHeight: 1,
@@ -281,29 +275,9 @@ function AgentRoster({
           textOverflow: "ellipsis",
         }}
       >
-        {footerOf(active)}
+        {footerOf(session)}
       </div>
     </>
-  );
-}
-
-/** Barra de consumo del reparto: mas fina que la de la carta y sin muelle. */
-function MiniBar({ percent, color, track }: { percent: number; color: string; track: string }) {
-  const clamped = Math.max(0, Math.min(100, percent));
-  return (
-    <div style={{ position: "relative", height: DRAWER.bar, background: track, borderRadius: DRAWER.bar }}>
-      <motion.div
-        initial={false}
-        animate={{ width: `${clamped}%` }}
-        transition={{ type: "spring", stiffness: 200, damping: 28 }}
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: color,
-          borderRadius: DRAWER.bar,
-        }}
-      />
-    </div>
   );
 }
 

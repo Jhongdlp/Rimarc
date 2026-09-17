@@ -20,6 +20,17 @@ pub enum AgentStatus {
     WaitingInput,
     Idle,
     ToolExecuting,
+    Editing,
+    Done,
+}
+
+/// Una instancia viva de un agente: el cajon de detalle lista estas.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentInstance {
+    pub pid: u32,
+    pub cwd: String,
+    pub project_name: String,
+    pub status: AgentStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +62,8 @@ pub struct AgentSession {
     pub context_tokens: Option<u64>,
     /// `false` = los porcentajes son una estimacion local, no la cuota real.
     pub quota_live: bool,
+    /// Todas las instancias vivas de este mismo tipo de agente.
+    pub instances: Vec<AgentInstance>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

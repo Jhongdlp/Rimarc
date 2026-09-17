@@ -16,7 +16,15 @@ export const clipboardTool: NotchTool<ClipboardData> = {
   author: "Rimarc Core",
   category: "utilities",
   badge: "KDE Plasma",
+  en: {
+    name: "Dynamic Clipboard",
+    tagline: "Clipboard history integrated with KDE Plasma",
+    description:
+      "Dock-style clipboard tool for your taskbar. Opens on hover with a smooth SVG animation, letting you copy, search and pin KDE Klipper clips in one click.",
+    badge: "KDE Plasma",
+  },
   icon: ClipboardList,
+  thumbnail: "/miniature/clipboard.webp",
 
   useData: useClipboard,
 

@@ -1,5 +1,22 @@
 use tauri::AppHandle;
 
+/// Idioma de los menus nativos. Lo fija el front con `set_tray_lang`; hasta
+/// entonces, español.
+static ENGLISH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn tr(es: &'static str, en: &'static str) -> &'static str {
+    if ENGLISH.load(std::sync::atomic::Ordering::Relaxed) { en } else { es }
+}
+
+/// Cambia el idioma y repinta el menu del icono de KDE si esta registrado.
+pub fn set_english(english: bool) {
+    ENGLISH.store(english, std::sync::atomic::Ordering::Relaxed);
+    #[cfg(target_os = "linux")]
+    if let Some(h) = HANDLE.lock().ok().and_then(|h| h.clone()) {
+        h.update(|_| {});
+    }
+}
+
 #[cfg(target_os = "linux")]
 use ksni::blocking::TrayMethods;
 
@@ -19,7 +36,7 @@ impl ksni::Tray for ClipboardKdeTray {
     }
 
     fn title(&self) -> String {
-        "Portapapeles Rimarc".into()
+        tr("Portapapeles Rimarc", "Rimarc Clipboard").into()
     }
 
     fn icon_name(&self) -> String {
@@ -61,7 +78,7 @@ impl ksni::Tray for ClipboardKdeTray {
         let app_open = self.app.clone();
         vec![
             StandardItem {
-                label: "Abrir Portapapeles".into(),
+                label: tr("Abrir Portapapeles", "Open Clipboard").into(),
                 activate: Box::new(move |_| {
                     let _ = crate::toggle_clipboard_window(app_open.clone(), None);
                 }),
@@ -70,7 +87,7 @@ impl ksni::Tray for ClipboardKdeTray {
             .into(),
             MenuItem::Separator,
             StandardItem {
-                label: "Vaciar Historial".into(),
+                label: tr("Vaciar Historial", "Clear History").into(),
                 activate: Box::new(|_| {
                     let _ = crate::clipboard::clear_clipboard_history();
                 }),
