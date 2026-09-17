@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { createContext, createElement, useContext, useSyncExternalStore, type ReactNode } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getThemeColors, type ThemeColors } from "../design/tokens";
 import { inTauri } from "./tauri";
@@ -42,6 +42,8 @@ export function setTheme(next: ThemeMode) {
  */
 export type BorderMode = "none" | "auto" | "custom";
 export type ClipboardPrefs = {
+  /** Tema propio del portapapeles, independiente del de la app (notch y tienda). */
+  theme: ThemeMode;
   border: BorderMode;
   /** Color de `custom`, uno de `PALETTE`. */
   borderColor: string;
@@ -59,6 +61,7 @@ export type ClipboardPrefs = {
 };
 const PREFS_KEY = "agentnotch.clipboardPrefs";
 const DEFAULT_PREFS: ClipboardPrefs = {
+  theme: "system",
   border: "none",
   borderColor: "#0A84FF",
   borderWidth: 2,
@@ -160,6 +163,22 @@ if (typeof window !== "undefined" && window.matchMedia) {
   }
 }
 
+/**
+ * Tema de un subarbol que no sigue al global: dentro, `useTheme` (y todo lo que
+ * lo usa, como `Popover`) lee y escribe este en su lugar.
+ */
+const ThemeScopeCtx = createContext<{ mode: ThemeMode; set: (mode: ThemeMode) => void } | null>(null);
+
+/** Las ventanas del portapapeles: su tema vive en `ClipboardPrefs.theme`. */
+export function ClipboardThemeScope({ children }: { children: ReactNode }) {
+  const { theme } = useClipboardPrefs();
+  return createElement(
+    ThemeScopeCtx.Provider,
+    { value: { mode: theme, set: (mode: ThemeMode) => setClipboardPrefs({ theme: mode }) } },
+    children,
+  );
+}
+
 export function useTheme(): {
   theme: ThemeMode;
   resolvedTheme: ResolvedTheme;
@@ -167,7 +186,9 @@ export function useTheme(): {
   colors: ThemeColors;
   setTheme: (theme: ThemeMode) => void;
 } {
-  const mode = useSyncExternalStore(subscribe, () => currentTheme);
+  const scope = useContext(ThemeScopeCtx);
+  const globalMode = useSyncExternalStore(subscribe, () => currentTheme);
+  const mode = scope?.mode ?? globalMode;
   const sys = useSyncExternalStore(subscribe, () => systemTheme);
   const resolvedTheme: ResolvedTheme = mode === "system" ? sys : mode;
   const isDark = resolvedTheme === "dark";
@@ -178,6 +199,6 @@ export function useTheme(): {
     resolvedTheme,
     isDark,
     colors,
-    setTheme,
+    setTheme: scope?.set ?? setTheme,
   };
 }

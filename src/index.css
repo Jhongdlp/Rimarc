@@ -22,15 +22,10 @@
     -webkit-user-drag: none;
   }
 
-  /* El notch overlay dock mantiene fondo transparente */
-  body:not(:has(.rimarc-store-app)) {
+  /* Todas las ventanas son transparentes: cada vista pinta su propio fondo
+     (la tienda y los ajustes, con las esquinas redondeadas). */
+  body {
     background: transparent;
-  }
-
-  /* La ventana de la tienda: fondo negro puro absoluto (sin tonos grises) */
-  body:has(.rimarc-store-app),
-  #root:has(.rimarc-store-app) {
-    background-color: #000000 !important;
   }
 
   body {
@@ -97,5 +92,16 @@
 @media (prefers-reduced-motion: reduce) {
   .rainbow-button::before {
     animation: none;
+  }
+}
+
+/* "Pulsa la combinación…" late mientras el grabador de atajos escucha. */
+.shortcut-listening {
+  animation: shortcut-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes shortcut-pulse {
+  50% {
+    opacity: 0.45;
   }
 }

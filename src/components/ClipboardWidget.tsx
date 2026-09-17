@@ -84,6 +84,7 @@ export function ClipboardWidget() {
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
+      else keys.current(e);
     };
     if (document.hasFocus()) enter();
     window.addEventListener("focus", enter);
@@ -95,6 +96,41 @@ export function ClipboardWidget() {
       window.removeEventListener("keydown", onKey);
     };
   }, []);
+
+  /**
+   * Atajos de la carta (la lista esta en Ajustes > Atajos). La seleccion es la
+   * misma que el hover, asi que teclado y raton se turnan sin dos resaltados.
+   * Va por ref: el listener se registra una vez y tiene que ver la lista actual.
+   */
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  keys.current = (e) => {
+    // Editando un clip, las teclas son del cuadro de texto.
+    if (e.target instanceof HTMLTextAreaElement) return;
+    const at = list.findIndex((it) => it.id === hovered);
+    const select = (i: number) => {
+      const item = list[Math.max(0, Math.min(list.length - 1, i))];
+      if (!item) return;
+      setHovered(item.id);
+      document.querySelector(`[data-clip-id="${CSS.escape(item.id)}"]`)?.scrollIntoView({ block: "nearest" });
+    };
+    const selected = list[at];
+    const mod = e.ctrlKey || e.metaKey;
+    let handled = true;
+    if (e.key === "ArrowDown") select(at + 1);
+    else if (e.key === "ArrowUp") select(at <= 0 ? 0 : at - 1);
+    else if (e.key === "Enter" && !mod) (selected ?? list[0]) && void copy(selected ?? list[0]);
+    else if (e.altKey && /^Digit[1-9]$/.test(e.code)) {
+      const item = list[Number(e.code.slice(5)) - 1];
+      if (item) void copy(item);
+    } else if (e.key === "Tab") setTab((t) => (t === "recent" ? "pinned" : "recent"));
+    else if (mod && e.key.toLowerCase() === "p" && selected) clipboard.togglePin(selected.id);
+    else if (e.shiftKey && e.key === "Delete" && selected) {
+      select(at + 1 < list.length ? at + 1 : at - 1);
+      clipboard.deleteItem(selected.id);
+    } else if (mod && e.key.toLowerCase() === "f") searchRef.current?.focus();
+    else handled = false;
+    if (handled) e.preventDefault();
+  };
 
   const copy = async (item: ClipboardItem) => {
     await clipboard.copyItem(item);
@@ -388,10 +424,10 @@ function Row({
     <div
       role="button"
       tabIndex={0}
+      data-clip-id={item.id}
       draggable={!editing}
       onDragStart={onDragStart}
       onClick={editing ? undefined : onCopy}
-      onKeyDown={(e) => !editing && e.key === "Enter" && onCopy()}
       onMouseEnter={() => {
         setOver(true);
         onHover();

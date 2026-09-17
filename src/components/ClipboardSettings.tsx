@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Ban, Check, Copy, Info, List, Monitor, Moon, Palette, Plug, RotateCcw, Sparkles, Sun, X } from "lucide-react";
+import { AlertTriangle, Ban, Check, Copy, Info, Keyboard, List, Monitor, Moon, Palette, Plug, RotateCcw, Sparkles, Sun, X } from "lucide-react";
 import { FONT_FAMILY } from "../design/tokens";
 import {
   PALETTE,
@@ -11,13 +11,14 @@ import {
   type ClipboardPrefs,
   type ThemeMode,
 } from "../lib/theme";
-import { call } from "../lib/tauri";
+import { call, inTauri } from "../lib/tauri";
 
-type Section = "appearance" | "list" | "mcp";
+type Section = "appearance" | "list" | "keys" | "mcp";
 
 const SECTIONS: { id: Section; label: string; title: string; icon: typeof Plug }[] = [
   { id: "appearance", label: "Apariencia", title: "Apariencia", icon: Palette },
   { id: "list", label: "Lista", title: "Lista", icon: List },
+  { id: "keys", label: "Atajos", title: "Atajos de teclado", icon: Keyboard },
   { id: "mcp", label: "Conectar", title: "Conectar a un agente", icon: Plug },
 ];
 
@@ -125,7 +126,7 @@ export function ClipboardSettings() {
           <CloseButton />
         </header>
         <main key={section} style={{ flex: 1, overflowY: "auto", padding: "0 28px 20px", scrollbarWidth: "thin" }}>
-          {section === "appearance" ? <Appearance /> : section === "list" ? <ListPrefs /> : <Mcp />}
+          {section === "appearance" ? <Appearance /> : section === "list" ? <ListPrefs /> : section === "keys" ? <Shortcuts /> : <Mcp />}
         </main>
       </div>
     </div>
@@ -706,6 +707,370 @@ function Switch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void
 
 /** Comillas de shell solo si la ruta las necesita (una AppImage en `~/Mis apps`). */
 const shellQuote = (s: string) => (/^[\w./-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`);
+
+/* ── Atajos ─────────────────────────────────────────────────────────────── */
+
+/** Modificadores de Qt: el atajo viaja a KGlobalAccel como `modificadores | tecla`. */
+const QT_MODS = [
+  { flag: 0x10000000, name: "Meta", on: (e: KeyboardEvent | React.KeyboardEvent) => e.metaKey },
+  { flag: 0x04000000, name: "Ctrl", on: (e: KeyboardEvent | React.KeyboardEvent) => e.ctrlKey },
+  { flag: 0x08000000, name: "Alt", on: (e: KeyboardEvent | React.KeyboardEvent) => e.altKey },
+  { flag: 0x02000000, name: "Shift", on: (e: KeyboardEvent | React.KeyboardEvent) => e.shiftKey },
+];
+const MOD_MASK = QT_MODS.reduce((m, x) => m | x.flag, 0);
+
+/** `KeyboardEvent.code` -> [tecla de Qt, nombre de Qt]. Por `code`, no `key`: con Shift, `key` ya es otro caracter. */
+const QT_KEYS: Record<string, [number, string]> = {
+  ...Object.fromEntries(
+    Array.from({ length: 26 }, (_, i) => [`Key${String.fromCharCode(65 + i)}`, [65 + i, String.fromCharCode(65 + i)]]),
+  ),
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`Digit${i}`, [48 + i, String(i)]])),
+  ...Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`F${i + 1}`, [0x01000030 + i, `F${i + 1}`]])),
+  Space: [0x20, "Space"],
+  Insert: [0x01000006, "Ins"],
+  Delete: [0x01000007, "Del"],
+  Home: [0x01000010, "Home"],
+  End: [0x01000011, "End"],
+  PageUp: [0x01000016, "PgUp"],
+  PageDown: [0x01000017, "PgDown"],
+  ArrowLeft: [0x01000012, "Left"],
+  ArrowUp: [0x01000013, "Up"],
+  ArrowRight: [0x01000014, "Right"],
+  ArrowDown: [0x01000015, "Down"],
+  Comma: [0x2c, ","],
+  Period: [0x2e, "."],
+  Slash: [0x2f, "/"],
+  Minus: [0x2d, "-"],
+  Equal: [0x3d, "="],
+  Semicolon: [0x3b, ";"],
+};
+
+/** Texto de Qt de un atajo (`Meta+Shift+V`), el que entiende `X-KDE-Shortcuts`. */
+function qtLabel(key: number): string {
+  const base = key & ~MOD_MASK;
+  const name = Object.values(QT_KEYS).find(([k]) => k === base)?.[1] ?? "?";
+  return [...QT_MODS.filter((m) => key & m.flag).map((m) => m.name), name].join("+");
+}
+
+/** Nombres para pintar: Qt dice `Del`, el teclado español dice `Supr`. */
+const KEY_CAPS: Record<string, string> = { Del: "Supr", Ins: "Insert", PgUp: "RePág", PgDown: "AvPág", Space: "Espacio", Up: "↑", Down: "↓", Left: "←", Right: "→" };
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  const { colors } = useTheme();
+  return (
+    <kbd
+      style={{
+        minWidth: 24,
+        height: 24,
+        padding: "0 7px",
+        borderRadius: 6,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "inherit",
+        fontSize: 11.5,
+        fontWeight: 600,
+        background: colors.track,
+        color: colors.detailLabel,
+        // Canto inferior de tecla: se lee como tecla y no como etiqueta.
+        boxShadow: `inset 0 -2px 0 rgba(0,0,0,0.35)`,
+      }}
+    >
+      {children}
+    </kbd>
+  );
+}
+
+function Keys({ label }: { label: string }) {
+  return (
+    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+      {label.split("+").map((k, i) => (
+        <Kbd key={i}>{KEY_CAPS[k] ?? k}</Kbd>
+      ))}
+    </span>
+  );
+}
+
+const CARD_KEYS: [string, string][] = [
+  ["Moverse por la lista", "Up+Down"],
+  ["Copiar el seleccionado", "Enter"],
+  ["Copiar del 1.º al 9.º", "Alt+1…9"],
+  ["Cambiar entre Recientes y Fijados", "Tab"],
+  ["Fijar o desfijar", "Ctrl+P"],
+  ["Eliminar el seleccionado", "Shift+Del"],
+  ["Buscar", "Ctrl+F"],
+  ["Cerrar", "Esc"],
+];
+
+const SUGGESTED = [0x10000000 | 0x02000000 | 0x56, 0x04000000 | 0x08000000 | 0x56]; // Meta+Shift+V, Ctrl+Alt+V
+
+type Recording =
+  | { phase: "idle" }
+  | { phase: "listening"; held: string[] }
+  | { phase: "conflict"; key: number; owner: string }
+  | { phase: "saving" }
+  | { phase: "error"; message: string };
+
+function Shortcuts() {
+  const { colors } = useTheme();
+  const [state, setState] = useState<{ supported: boolean; key: number } | null>(null);
+  const [rec, setRec] = useState<Recording>({ phase: "idle" });
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!inTauri) return setState({ supported: true, key: 0 });
+    void call<{ supported: boolean; key: number }>("global_shortcut").then((s) => s && setState(s));
+  }, []);
+
+  const listening = rec.phase === "listening";
+  // Mientras se graba, KDE no ejecuta sus atajos (si no, Meta+V abriria Klipper
+  // antes de llegar aqui). Se suelta siempre: al terminar, al perder el foco la
+  // ventana, y a los 10 s por si acaso, que un bloqueo olvidado deja el escritorio sin atajos.
+  useEffect(() => {
+    if (!listening) return;
+    void call("block_global_shortcuts", { block: true });
+    const stop = () => setRec({ phase: "idle" });
+    const timer = setTimeout(stop, 10000);
+    window.addEventListener("blur", stop);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("blur", stop);
+      void call("block_global_shortcuts", { block: false });
+    };
+  }, [listening]);
+
+  const apply = async (key: number, steal = false) => {
+    if (key && !steal) {
+      const owner = await call<string | null>("global_shortcut_owner", { key });
+      if (owner) return setRec({ phase: "conflict", key, owner });
+    }
+    setRec({ phase: "saving" });
+    try {
+      await call("set_global_shortcut", { key, label: key ? qtLabel(key) : "", steal });
+      setState((s) => s && { ...s, key });
+      setRec({ phase: "idle" });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } catch (err) {
+      setRec({ phase: "error", message: String(err) });
+    }
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!listening) return;
+    // Nada de lo que se pulse aqui llega a la ventana: Esc no la cierra.
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === "Escape") return setRec({ phase: "idle" });
+    const held = QT_MODS.filter((m) => m.on(e)).map((m) => m.name);
+    const base = QT_KEYS[e.code];
+    if (!base) return setRec({ phase: "listening", held });
+    const isF = /^F\d+$/.test(base[1]);
+    // Una letra sola (o con Shift) se comeria la escritura en cualquier app.
+    if (!isF && !held.some((m) => m !== "Shift")) {
+      return setRec({ phase: "listening", held: ["Ctrl, Alt o Meta + tecla"] });
+    }
+    const key = QT_MODS.filter((m) => m.on(e)).reduce((k, m) => k | m.flag, base[0]);
+    void apply(key);
+  };
+
+  const onKeyUp = (e: React.KeyboardEvent) => {
+    if (listening) setRec({ phase: "listening", held: QT_MODS.filter((m) => m.on(e)).map((m) => m.name) });
+  };
+
+  const ring = useRing();
+
+  return (
+    <>
+      <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: colors.detailValue }}>
+        Abre el portapapeles desde cualquier aplicación y muévete por él sin tocar el ratón.
+      </p>
+
+      <Card title="Global">
+        {state && !state.supported ? (
+          <div style={{ padding: "14px 0", display: "flex", gap: 8, fontSize: 12.5, lineHeight: 1.5, color: colors.detailValue }}>
+            <Info size={15} strokeWidth={2} style={{ flex: "none", marginTop: 2 }} />
+            Los atajos globales solo están disponibles en KDE Plasma. Puedes asignar la orden
+            <code style={{ color: colors.detailLabel }}> rimarc --clipboard </code> desde los ajustes de tu escritorio.
+          </div>
+        ) : (
+          <>
+            <Row
+              label="Abrir el portapapeles"
+              hint={
+                listening
+                  ? "Esc para cancelar"
+                  : rec.phase === "saving"
+                    ? "Registrando en KDE…"
+                    : saved
+                      ? "Guardado"
+                      : "Desde cualquier aplicación"
+              }
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setRec(listening ? { phase: "idle" } : { phase: "listening", held: [] })}
+                  onKeyDown={onKeyDown}
+                  onKeyUp={onKeyUp}
+                  disabled={!state || rec.phase === "saving"}
+                  aria-label="Grabar atajo"
+                  style={{
+                    ...bare,
+                    minWidth: 150,
+                    height: 36,
+                    padding: "0 12px",
+                    borderRadius: 9,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    background: listening ? "transparent" : colors.surface,
+                    color: colors.detailValue,
+                    boxShadow: `inset 0 0 0 1px ${colors.track}`,
+                    ...ring(listening),
+                  }}
+                >
+                  {listening ? (
+                    rec.held.length ? (
+                      <span style={{ color: colors.detailLabel }}>{rec.held.join(" + ")} + …</span>
+                    ) : (
+                      <span className="shortcut-listening">Pulsa la combinación…</span>
+                    )
+                  ) : saved ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, color: "#30D158" }}>
+                      <Check size={14} strokeWidth={2.4} /> <Keys label={qtLabel(state!.key)} />
+                    </span>
+                  ) : state?.key ? (
+                    <Keys label={qtLabel(state.key)} />
+                  ) : (
+                    "Asignar atajo"
+                  )}
+                </button>
+                {!!state?.key && !listening && (
+                  <button
+                    type="button"
+                    title="Quitar atajo"
+                    aria-label="Quitar atajo"
+                    onClick={() => void apply(0)}
+                    style={{ ...bare, padding: 6, borderRadius: 8, color: colors.detailValue, display: "flex" }}
+                  >
+                    <X size={15} strokeWidth={2} />
+                  </button>
+                )}
+              </div>
+            </Row>
+
+            {rec.phase === "conflict" && (
+              <Notice tone="warn">
+                <span style={{ flex: 1 }}>
+                  <Keys label={qtLabel(rec.key)} /> ya lo usa <b style={{ color: colors.detailLabel }}>{rec.owner}</b>.
+                </span>
+                <SmallButton onClick={() => void apply(rec.key, true)} primary>
+                  Reasignar
+                </SmallButton>
+                <SmallButton onClick={() => setRec({ phase: "idle" })}>Cancelar</SmallButton>
+              </Notice>
+            )}
+            {rec.phase === "error" && (
+              <Notice tone="error">
+                <span style={{ flex: 1 }}>{rec.message}</span>
+                <SmallButton onClick={() => setRec({ phase: "idle" })}>Vale</SmallButton>
+              </Notice>
+            )}
+
+            {!state?.key && rec.phase === "idle" && (
+              <Row label="Sugerencias" hint="Un clic y listo">
+                <div style={{ display: "flex", gap: 8 }}>
+                  {SUGGESTED.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => void apply(key)}
+                      style={{ ...bare, padding: 3, borderRadius: 8, boxShadow: `inset 0 0 0 1px ${colors.track}` }}
+                    >
+                      <Keys label={qtLabel(key)} />
+                    </button>
+                  ))}
+                </div>
+              </Row>
+            )}
+          </>
+        )}
+      </Card>
+
+      <Card title="En la carta">
+        {CARD_KEYS.map(([label, keys]) => (
+          <div
+            key={label}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              minHeight: 42,
+              borderTop: `1px solid ${colors.track}`,
+              fontSize: 13,
+              color: colors.detailLabel,
+            }}
+          >
+            {label}
+            <Keys label={keys} />
+          </div>
+        ))}
+      </Card>
+    </>
+  );
+}
+
+function Notice({ tone, children }: { tone: "warn" | "error"; children: React.ReactNode }) {
+  const { colors } = useTheme();
+  const color = tone === "warn" ? "#FF9F0A" : "#FF453A";
+  return (
+    <div
+      role="alert"
+      style={{
+        margin: "0 0 12px",
+        padding: "10px 12px",
+        borderRadius: 9,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        fontSize: 12.5,
+        lineHeight: 1.6,
+        color: colors.detailValue,
+        background: `${color}1f`,
+        boxShadow: `inset 0 0 0 1px ${color}55`,
+      }}
+    >
+      <AlertTriangle size={15} strokeWidth={2} color={color} style={{ flex: "none" }} />
+      {children}
+    </div>
+  );
+}
+
+function SmallButton({ primary, onClick, children }: { primary?: boolean; onClick: () => void; children: React.ReactNode }) {
+  const { colors } = useTheme();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...bare,
+        flex: "none",
+        padding: "5px 11px",
+        borderRadius: 7,
+        fontSize: 12,
+        fontWeight: 600,
+        background: primary ? colors.detailLabel : colors.track,
+        color: primary ? colors.surface : colors.detailLabel,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 type Agent = "claude" | "codex" | "json";
 

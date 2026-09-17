@@ -3,6 +3,7 @@ import { NotchBar } from "./components/NotchBar";
 import { StoreApp } from "./components/store/StoreApp";
 import { ClipboardWidget } from "./components/ClipboardWidget";
 import { ClipboardSettings } from "./components/ClipboardSettings";
+import { ClipboardThemeScope } from "./lib/theme";
 import { getTauriWindowLabel } from "./lib/tauri";
 
 export default function App() {
@@ -27,11 +28,19 @@ export default function App() {
 
   // Si corre en la ventana de portapapeles independiente de la barra de tareas ('clipboard')
   if (label === "clipboard") {
-    return <ClipboardWidget />;
+    return (
+      <ClipboardThemeScope>
+        <ClipboardWidget />
+      </ClipboardThemeScope>
+    );
   }
 
   if (label === "clipboard-settings") {
-    return <ClipboardSettings />;
+    return (
+      <ClipboardThemeScope>
+        <ClipboardSettings />
+      </ClipboardThemeScope>
+    );
   }
 
   // En la ventana 'store' de Tauri o en modo navegador de desarrollo, renderizar la tienda
