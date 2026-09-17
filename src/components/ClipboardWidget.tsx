@@ -4,7 +4,7 @@ import { Check, ExternalLink, Pencil, Settings, X } from "lucide-react";
 import { POPOVER } from "../design/tokens";
 import { Popover, PopoverHeader } from "./Popover";
 import { borderColorFor, useClipboardPrefs, useTheme } from "../lib/theme";
-import { call } from "../lib/tauri";
+import { call, inTauri } from "../lib/tauri";
 import { useI18n, type Lang } from "../lib/i18n";
 import { useClipboard } from "../tools/clipboard/useClipboard";
 import type { ClipboardItem } from "../tools/clipboard/types";
@@ -93,10 +93,21 @@ export function ClipboardWidget() {
       else keys.current(e);
     };
     if (document.hasFocus()) enter();
+    // KWin no siempre da el foco a la ventana al mostrarla (sobre todo desde el
+    // atajo, con otra app enfocada): esperando solo a `focus`, la ventana quedaba
+    // visible pero vacia y el siguiente atajo la "cerraba".
+    let unlisten: (() => void) | undefined;
+    let gone = false;
+    if (inTauri)
+      void import("@tauri-apps/api/event").then(({ listen }) =>
+        listen("clipboard_window_opened", enter).then((fn) => (gone ? fn() : (unlisten = fn))),
+      );
     window.addEventListener("focus", enter);
     window.addEventListener("blur", leave);
     window.addEventListener("keydown", onKey);
     return () => {
+      gone = true;
+      unlisten?.();
       window.removeEventListener("focus", enter);
       window.removeEventListener("blur", leave);
       window.removeEventListener("keydown", onKey);

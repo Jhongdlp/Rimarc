@@ -69,7 +69,7 @@ impl ksni::Tray for ClipboardKdeTray {
     fn activate(&mut self, x: i32, _y: i32) {
         let app = self.app.clone();
         let target_x = if x > 0 { Some(x as f64) } else { None };
-        let _ = crate::toggle_clipboard_window(app, target_x);
+        toggle_on_main(app, target_x);
     }
 
     // Menú contextual nativo de KDE que se abre con clic derecho
@@ -80,7 +80,7 @@ impl ksni::Tray for ClipboardKdeTray {
             StandardItem {
                 label: tr("Abrir Portapapeles", "Open Clipboard").into(),
                 activate: Box::new(move |_| {
-                    let _ = crate::toggle_clipboard_window(app_open.clone(), None);
+                    toggle_on_main(app_open.clone(), None);
                 }),
                 ..Default::default()
             }
@@ -96,6 +96,16 @@ impl ksni::Tray for ClipboardKdeTray {
             .into(),
         ]
     }
+}
+
+/// ksni llama desde su propio hilo y GTK solo obedece en el principal: fuera de
+/// el, abrir la carta a veces no hacia nada y a veces llegaba tarde.
+#[cfg(target_os = "linux")]
+fn toggle_on_main(app: AppHandle, target_x: Option<f64>) {
+    let handle = app.clone();
+    let _ = handle.run_on_main_thread(move || {
+        let _ = crate::toggle_clipboard_window(app, target_x);
+    });
 }
 
 #[cfg(target_os = "linux")]
