@@ -109,6 +109,32 @@ This only works for bundles the updater can replace in place:
 Distro packages own files under `/usr`, so the app cannot rewrite itself there.
 Use the AppImage if you want a Linux build that keeps itself current.
 
+### Clipboard MCP (Linux, KDE)
+
+The same binary is an MCP server when run with `--mcp`, so an agent can read your
+clipboard history — images included — without you pasting anything
+("look at the last 3 images I copied"). It reads Klipper's history (Plasma 6) and
+works whether or not the Rimarc window is open.
+
+Claude Code:
+```bash
+claude mcp add -s user rimarc-clipboard -- rimarc --mcp
+```
+
+Cursor, Gemini CLI, Claude Desktop (`mcpServers` JSON):
+```json
+{ "mcpServers": { "rimarc-clipboard": { "command": "rimarc", "args": ["--mcp"] } } }
+```
+
+Codex (`~/.codex/config.toml`):
+```toml
+[mcp_servers.rimarc-clipboard]
+command = "rimarc"
+args = ["--mcp"]
+```
+
+Using the AppImage, put its full path as the command instead of `rimarc`.
+
 ---
 
 ### Building From Source

@@ -50,7 +50,7 @@ Since that window is transparent and covers an entire screen edge, only the rect
 | mode | region (depth × run) |
 |---|---|
 | `peek` | 40 × 72 |
-| `bar` | 80 × `max(height+100, 140)` |
+| `bar` | 60 × `height+8` |
 | `expanded`/other | the whole window |
 
 So **any change to the React layout's occupied area must be accompanied by a `set_notch_mode` invoke with a matching `height` and `along`**, or the app will either eat desktop clicks or become unclickable. `NotchBar` fires this through `useInputShape`.

@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getThemeColors, type ThemeColors } from "../design/tokens";
+import { inTauri } from "./tauri";
 
 export type ThemeMode = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
@@ -31,6 +33,105 @@ export function setTheme(next: ThemeMode) {
   currentTheme = next;
   localStorage.setItem(KEY, next);
   notify();
+  broadcast();
+}
+
+/**
+ * Preferencias del portapapeles (carta y ventana de ajustes). `auto` pinta un
+ * gris que contrasta con el tema: claro sobre la carta negra, oscuro sobre la blanca.
+ */
+export type BorderMode = "none" | "auto" | "custom";
+export type ClipboardPrefs = {
+  border: BorderMode;
+  /** Color de `custom`, uno de `PALETTE`. */
+  borderColor: string;
+  borderWidth: 1 | 2 | 3;
+  /** Multiplica los tamaños de letra de la carta. */
+  fontScale: number;
+  /** `null` = el color de texto del tema, sin acento. */
+  accent: string | null;
+  /** Opacidad del fondo de la carta. */
+  surfaceOpacity: number;
+  density: "compact" | "comfy";
+  previewLines: 1 | 2 | 3;
+  historyLimit: 25 | 50 | 100;
+  closeOnCopy: boolean;
+};
+const PREFS_KEY = "agentnotch.clipboardPrefs";
+const DEFAULT_PREFS: ClipboardPrefs = {
+  border: "none",
+  borderColor: "#0A84FF",
+  borderWidth: 2,
+  fontScale: 1,
+  accent: null,
+  surfaceOpacity: 1,
+  density: "comfy",
+  previewLines: 1,
+  historyLimit: 25,
+  closeOnCopy: true,
+};
+const readPrefs = (): ClipboardPrefs => {
+  try {
+    return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+};
+let currentPrefs: ClipboardPrefs = readPrefs();
+
+export function setClipboardPrefs(patch: Partial<ClipboardPrefs>) {
+  currentPrefs = { ...currentPrefs, ...patch };
+  localStorage.setItem(PREFS_KEY, JSON.stringify(currentPrefs));
+  notify();
+  broadcast();
+}
+
+export function resetClipboardPrefs() {
+  setClipboardPrefs(DEFAULT_PREFS);
+}
+
+/** Colores que ofrecen el acento y el borde: los del sistema de Apple, legibles en los dos temas. */
+export const PALETTE = [
+  { color: "#0A84FF", label: "Azul" },
+  { color: "#BF5AF2", label: "Morado" },
+  { color: "#FF375F", label: "Rosa" },
+  { color: "#FF453A", label: "Rojo" },
+  { color: "#FF9F0A", label: "Naranja" },
+  { color: "#FFD60A", label: "Amarillo" },
+  { color: "#30D158", label: "Verde" },
+  { color: "#64D2FF", label: "Cian" },
+];
+
+export const useClipboardPrefs = () => useSyncExternalStore(subscribe, () => currentPrefs);
+
+/** Color resuelto del borde, o `undefined` sin borde. */
+export function borderColorFor(prefs: ClipboardPrefs, isDark: boolean): string | undefined {
+  switch (prefs.border) {
+    case "none":
+      return undefined;
+    case "auto":
+      return isDark ? "#A1A1A6" : "#48484A";
+    default:
+      return prefs.borderColor;
+  }
+}
+
+// Cada ventana tiene su propia copia de este modulo, y el evento `storage` no
+// cruza entre webviews de WebKitGTK: los cambios viajan como evento de Tauri con
+// los valores dentro, sin depender de que el localStorage de la otra ya este al dia.
+const SYNC_EVENT = "rimarc://appearance";
+type SyncPayload = { theme: ThemeMode; prefs: ClipboardPrefs };
+
+function broadcast() {
+  if (inTauri) void emit(SYNC_EVENT, { theme: currentTheme, prefs: currentPrefs } satisfies SyncPayload);
+}
+
+if (inTauri) {
+  void listen<SyncPayload>(SYNC_EVENT, ({ payload }) => {
+    currentTheme = payload.theme;
+    currentPrefs = { ...DEFAULT_PREFS, ...payload.prefs };
+    notify();
+  });
 }
 
 function subscribe(fn: () => void) {

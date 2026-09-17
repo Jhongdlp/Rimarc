@@ -2,13 +2,19 @@ mod models;
 mod parser;
 mod quota;
 mod scanner;
+mod clipboard;
+mod clipboard_tray;
+#[cfg(target_os = "linux")]
+pub mod shortcut;
+#[cfg(target_os = "linux")]
+pub mod mcp;
 
 use std::sync::Mutex;
 use tauri_plugin_updater::UpdaterExt;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
-use models::SystemAgentSummary;
+use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
+use models::{SystemAgentSummary, SystemMetrics};
 use scanner::AgentScanner;
 
 #[cfg(target_os = "linux")]
@@ -80,8 +86,17 @@ fn scan_agents(state: State<AppState>) -> Result<SystemAgentSummary, String> {
     Ok(scanner.scan())
 }
 
+#[tauri::command]
+fn get_system_stats(state: State<AppState>) -> Result<SystemMetrics, String> {
+    let mut scanner = state.scanner.lock().map_err(|e| e.to_string())?;
+    Ok(scanner.get_system_stats())
+}
+
 /// Configure Linux GTK window properties for an always-on-top dock.
 fn configure_linux_window(window: &WebviewWindow) {
+    if window.label() != "main" && window.label() != "clipboard" {
+        return;
+    }
     #[cfg(target_os = "linux")]
     {
         if let Ok(gtk_win) = window.gtk_window() {
@@ -92,7 +107,7 @@ fn configure_linux_window(window: &WebviewWindow) {
             gtk_win.set_skip_pager_hint(true);
             gtk_win.set_decorated(false);
             gtk_win.set_resizable(false);
-            gtk_win.set_role("agent-notch");
+            gtk_win.set_role(if window.label() == "clipboard" { "rimarc-clipboard" } else { "agent-notch" });
         }
     }
 }
@@ -148,7 +163,10 @@ fn update_input_shape(
                     // sigue a la silueta, o dormido quedaria franja muerta.
                     (40.0, f64::from(height).max(24.0))
                 } else {
-                    (80.0, (f64::from(height) + 100.0).max(140.0))
+                    // Pegado a la silueta (NOTCH.depth = 60; el front ya suma
+                    // medio engranaje al alto). Holgura de sobra aqui se come
+                    // los clics de botones del escritorio junto al notch.
+                    (60.0, f64::from(height) + 8.0)
                 };
                 edge_rect(edge, (sw, sh), (0.0, depth), along, run)
             }
@@ -252,18 +270,25 @@ fn set_notch_mode(
     height: u32,
     along: f64,
 ) -> Result<(), String> {
+    let notch_win = if window.label() == "main" {
+        window
+    } else if let Some(w) = window.app_handle().get_webview_window("main") {
+        w
+    } else {
+        window
+    };
     let edge = state.edge.lock().map_err(|e| e.to_string())?.clone();
     *state.shape.lock().map_err(|e| e.to_string())? = Shape {
         mode: mode.clone(),
         height,
         along,
     };
-    let scale = monitor_of(&window).map(|m| m.scale_factor()).unwrap_or(1.0);
-    let size = window
+    let scale = monitor_of(&notch_win).map(|m| m.scale_factor()).unwrap_or(1.0);
+    let size = notch_win
         .inner_size()
         .map(|s| (s.width as f64 / scale, s.height as f64 / scale))
         .unwrap_or((STAGE_DEPTH, STAGE_DEPTH));
-    update_input_shape(&window, &mode, height, along, scale, &edge, size);
+    update_input_shape(&notch_win, &mode, height, along, scale, &edge, size);
     Ok(())
 }
 
@@ -275,10 +300,18 @@ fn set_notch_mode(
 /// ventanas antes de que aqui se coloque donde toca.
 #[tauri::command]
 fn place_notch(window: WebviewWindow, state: State<AppState>, edge: String) -> Result<(), String> {
+    let notch_win = if window.label() == "main" {
+        window
+    } else if let Some(w) = window.app_handle().get_webview_window("main") {
+        w
+    } else {
+        window
+    };
     let edge = normalize_edge(&edge);
-    apply_edge(&window, edge, "expanded", 0, 0.0);
+    apply_edge(&notch_win, edge, "expanded", 0, 0.0);
     *state.edge.lock().map_err(|e| e.to_string())? = edge.to_string();
-    let _ = window.show();
+    let _ = notch_win.show();
+    let _ = notch_win.app_handle().emit("notch_visibility_changed", true);
     Ok(())
 }
 
@@ -287,12 +320,19 @@ fn place_notch(window: WebviewWindow, state: State<AppState>, edge: String) -> R
 /// llama a `place_notch` cuando el borde cambia de verdad.
 #[tauri::command]
 fn drag_probe(window: WebviewWindow, edge: String) -> Result<DragTarget, String> {
-    let cursor = window.cursor_position().map_err(|e| e.to_string())?;
-    let mon = window
+    let notch_win = if window.label() == "main" {
+        window
+    } else if let Some(w) = window.app_handle().get_webview_window("main") {
+        w
+    } else {
+        window
+    };
+    let cursor = notch_win.cursor_position().map_err(|e| e.to_string())?;
+    let mon = notch_win
         .monitor_from_point(cursor.x, cursor.y)
         .ok()
         .flatten()
-        .or_else(|| monitor_of(&window))
+        .or_else(|| monitor_of(&notch_win))
         .ok_or("sin monitor")?;
 
     let ms = mon.size();
@@ -413,29 +453,396 @@ fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+fn toggle_notch_state(app: tauri::AppHandle) -> Result<bool, String> {
+    toggle_notch(&app);
+    let visible = app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+    Ok(visible)
+}
+
+#[tauri::command]
+fn get_notch_visibility(app: tauri::AppHandle) -> Result<bool, String> {
+    let visible = app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+    Ok(visible)
+}
+
+#[tauri::command]
+fn open_store_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("store") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn minimize_store_window(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    let _ = window.minimize();
+    if let Some(w) = app.get_webview_window("store") {
+        let _ = w.minimize();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn close_store_window(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    let _ = window.hide();
+    if let Some(w) = app.get_webview_window("store") {
+        let _ = w.hide();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_clipboard_history(limit: Option<usize>) -> Result<Vec<clipboard::ClipboardItem>, String> {
+    Ok(clipboard::get_clipboard_history(limit))
+}
+
+#[tauri::command]
+fn set_clipboard_content(text: String) -> Result<(), String> {
+    clipboard::set_clipboard_content(&text)
+}
+
+#[tauri::command]
+fn set_clipboard_image(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        // GTK solo se toca desde el hilo principal.
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = tx.send(clipboard::set_clipboard_image(&path));
+        })
+        .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (app, path);
+        Err("solo disponible en Linux".into())
+    }
+}
+
+#[tauri::command]
+fn delete_clipboard_item(id: String) -> Result<(), String> {
+    clipboard::delete_clipboard_item(&id)
+}
+
+/// Mientras se arrastra un clip fuera de la ventana, perder el foco no la
+/// oculta: ocultar el origen a mitad de arrastre cancela el soltar.
+static CLIPBOARD_DRAGGING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Arrastre nativo de GTK para las filas del portapapeles. El drag & drop de
+/// HTML no sirve: WebKitGTK no deja salir un `file://` puesto por la pagina, el
+/// texto que ofrece lo rechazan destinos como Warp (el cursor con la X), y de
+/// icono pinta la fila entera con sus botones.
+#[tauri::command]
+fn start_clipboard_drag(app: tauri::AppHandle, path: Option<String>, text: Option<String>) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let window = app.get_webview_window("clipboard").ok_or("sin ventana")?;
+        let handle = app.clone();
+        if let Some(text) = text {
+            CLIPBOARD_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
+            return app
+                .run_on_main_thread(move || {
+                    if let Ok(gtk_win) = window.gtk_window() {
+                        start_text_drag(&gtk_win, text, handle);
+                    }
+                })
+                .map_err(|e| e.to_string());
+        }
+        let path = clipboard::checked_png(path.as_deref().ok_or("sin ruta ni texto")?)?.to_path_buf();
+        CLIPBOARD_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
+        app.run_on_main_thread(move || {
+            let Ok(gtk_win) = window.gtk_window() else { return };
+            let icon = drag::Image::Raw(clipboard::drag_icon(&path));
+            let result = drag::start_drag(
+                &gtk_win,
+                drag::DragItem::Files(vec![path]),
+                icon,
+                move |result, _| {
+                    CLIPBOARD_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
+                    // Soltada en otra app: ya esta pegada, la ventana sobra.
+                    if let (drag::DragResult::Dropped, Some(w)) =
+                        (result, handle.get_webview_window("clipboard"))
+                    {
+                        let _ = w.hide();
+                    }
+                },
+                drag::Options::default(),
+            );
+            if let Err(e) = result {
+                CLIPBOARD_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
+                eprintln!("[Clipboard] no se pudo arrastrar: {e}");
+            }
+        })
+        .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (app, path, text);
+        Err("solo disponible en Linux".into())
+    }
+}
+
+/// Lo que `drag::start_drag` hace con ficheros, pero con texto: `drag-rs` no
+/// lo soporta en GTK. Ofrece todos los destinos de texto (UTF8_STRING,
+/// text/plain...) para que cada app coja el que entienda.
+#[cfg(target_os = "linux")]
+fn start_text_drag(win: &gtk::ApplicationWindow, text: String, handle: tauri::AppHandle) {
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+    let done = move |dropped: bool| {
+        CLIPBOARD_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
+        // Soltado en otra app: ya esta pegado, la ventana sobra.
+        if let (true, Some(w)) = (dropped, handle.get_webview_window("clipboard")) {
+            let _ = w.hide();
+        }
+    };
+
+    win.drag_source_set(gdk::ModifierType::BUTTON1_MASK, &[], gdk::DragAction::COPY);
+    win.drag_source_add_text_targets();
+    let Some(targets) = win.drag_source_get_target_list() else { return done(false) };
+
+    let ids = Rc::new(RefCell::new(Vec::new()));
+    let failed = Rc::new(Cell::new(false));
+    ids.borrow_mut().push(win.connect_drag_data_get(move |_, _, data, _, _| {
+        data.set_text(&text);
+    }));
+    let f = failed.clone();
+    ids.borrow_mut().push(win.connect_drag_failed(move |_, _, _| {
+        f.set(true);
+        gtk::glib::Propagation::Proceed
+    }));
+    let own = ids.clone();
+    let done_end = done.clone();
+    ids.borrow_mut().push(win.connect_drag_end(move |w, _| {
+        for id in own.borrow_mut().drain(..) {
+            w.disconnect(id);
+        }
+        done_end(!failed.get());
+    }));
+
+    let started = win.drag_begin_with_coordinates(
+        &targets,
+        gdk::DragAction::COPY,
+        gdk::ffi::GDK_BUTTON1_MASK as i32,
+        None,
+        -1,
+        -1,
+    );
+    match started {
+        Some(ctx) => ctx.drag_set_icon_name("text-x-generic", 0, 0),
+        None => {
+            for id in ids.borrow_mut().drain(..) {
+                win.disconnect(id);
+            }
+            done(false);
+        }
+    }
+}
+
+/// "Abrir" de una fila del portapapeles: un enlace en el navegador, una imagen
+/// o una ruta en su aplicacion. El texto viene del historial, que puede traer
+/// cualquier cosa: solo pasan http(s) y rutas que existen, nunca otros esquemas.
+#[tauri::command]
+fn open_clipboard_item(text: String) -> Result<(), String> {
+    let t = text.trim();
+    let target = if t.starts_with("http://") || t.starts_with("https://") {
+        t.to_string()
+    } else {
+        let path = t.strip_prefix("file://").unwrap_or(t);
+        let path = match path.strip_prefix("~/") {
+            Some(rest) => dirs::home_dir().ok_or("sin home")?.join(rest),
+            None => std::path::PathBuf::from(path),
+        };
+        if !path.is_absolute() || !path.exists() {
+            return Err("no es un enlace ni una ruta que exista".into());
+        }
+        path.to_string_lossy().into_owned()
+    };
+    std::process::Command::new("xdg-open")
+        .arg(target)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn clear_clipboard_history() -> Result<(), String> {
+    clipboard::clear_clipboard_history()
+}
+
+fn setup_clipboard_geometry(window: &WebviewWindow, target_x: Option<f64>) {
+    configure_linux_window(window);
+    let monitor = monitor_of(window);
+    let (monitor_size, monitor_pos, scale) = match monitor {
+        Some(ref mon) => (*mon.size(), *mon.position(), mon.scale_factor()),
+        None => (
+            tauri::PhysicalSize { width: 1920, height: 1080 },
+            tauri::PhysicalPosition { x: 0, y: 0 },
+            1.0,
+        ),
+    };
+
+    let w = (460.0 * scale).round() as i32;
+    let h = (620.0 * scale).round() as i32;
+
+    // Alinear horizontalmente con el icono de la bandeja si se conoce su posición
+    let default_center_x = monitor_pos.x + monitor_size.width as i32 - (150.0 * scale).round() as i32;
+    let center_x = target_x.map(|tx| tx.round() as i32).unwrap_or(default_center_x);
+
+    let min_x = monitor_pos.x + 12;
+    let max_x = monitor_pos.x + monitor_size.width as i32 - w - 12;
+    let x = (center_x - w / 2).clamp(min_x, max_x);
+
+    // Borde inferior: ubicado justo por encima del panel de tareas (~48px en KDE)
+    let y = monitor_pos.y + monitor_size.height as i32 - h - (46.0 * scale).round() as i32;
+
+    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width: w as u32, height: h as u32 }));
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(gtk_win) = window.gtk_window() {
+            gtk_win.set_size_request(460, 620);
+        }
+    }
+    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
+    let _ = window.set_always_on_top(true);
+}
+
+#[tauri::command]
+fn toggle_clipboard_window(app: tauri::AppHandle, target_x: Option<f64>) -> Result<bool, String> {
+    let Some(window) = app.get_webview_window("clipboard") else { return Ok(false) };
+    let is_vis = window.is_visible().unwrap_or(false);
+    if is_vis {
+        let _ = window.hide();
+        Ok(false)
+    } else {
+        setup_clipboard_geometry(&window, target_x);
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = window.emit("clipboard_window_opened", ());
+        Ok(true)
+    }
+}
+
+/// Comando con el que un cliente MCP arranca el servidor del portapapeles. Es la
+/// ruta real de este binario: en una AppImage `current_exe` apunta al montaje
+/// temporal, que cambia en cada arranque, y la ruta estable es `$APPIMAGE`.
+#[tauri::command]
+fn mcp_command() -> String {
+    std::env::var("APPIMAGE")
+        .ok()
+        .or_else(|| std::env::current_exe().ok().map(|p| p.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "rimarc".into())
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn global_shortcut() -> shortcut::ShortcutState {
+    shortcut::get()
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn global_shortcut_owner(key: i64) -> Option<String> {
+    shortcut::owner(key)
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn set_global_shortcut(key: i64, label: String, steal: bool) -> Result<(), String> {
+    shortcut::set(key, &label, &mcp_command(), steal)
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn block_global_shortcuts(block: bool) {
+    shortcut::block_global(block)
+}
+
+/// Ajustes del portapapeles: una ventana aparte, centrada, que sustituye a la
+/// carta (la carta se cierra sola al perder el foco, un modal dentro no duraria).
+#[tauri::command]
+fn open_clipboard_settings(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app.get_webview_window("clipboard-settings").ok_or("sin ventana")?;
+    if let Some(w) = app.get_webview_window("clipboard") {
+        let _ = w.hide();
+    }
+    // Colocarla desde Tauri no vale: KWin la recoloca al mapearla (bajo el
+    // puntero, que esta en la bandeja) y salia abajo a la derecha y cortada.
+    // `CenterAlways` es GTK el que la centra, y lo repite si el WM la mueve.
+    #[cfg(target_os = "linux")]
+    {
+        let win = window.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Ok(gtk_win) = win.gtk_window() {
+                gtk_win.set_position(gtk::WindowPosition::CenterAlways);
+            }
+            let _ = win.show();
+            let _ = win.set_focus();
+        });
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = window.center();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn close_clipboard_settings(app: tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("clipboard-settings") {
+        let _ = w.hide();
+    }
+}
+
+#[tauri::command]
+fn get_clipboard_enabled() -> bool {
+    clipboard_tray::is_enabled()
+}
+
+#[tauri::command]
+fn set_clipboard_enabled(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    clipboard_tray::set_enabled(&app, enabled)?;
+    if !enabled {
+        let _ = close_clipboard_window(app);
+    }
+    Ok(enabled)
+}
+
+#[tauri::command]
+fn close_clipboard_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("clipboard") {
+        let _ = window.hide();
+    }
+    Ok(())
+}
+
 /// Mostrar/ocultar desde la bandeja. Al volver a mostrar hay que reponer la
 /// geometria: KWin trata el re-mapeo como una ventana nueva y la recoloca en
 /// el centro de la pantalla.
 fn toggle_notch(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window("main") else { return };
-    match window.is_visible() {
+    let new_vis = match window.is_visible() {
         Ok(true) => {
             let _ = window.hide();
+            false
         }
         Ok(false) => {
             let state = app.state::<AppState>();
             let edge = state.edge.lock().map(|g| g.clone()).unwrap_or_else(|_| "right".into());
             let shape = state.shape.lock().map(|g| g.clone()).unwrap_or_default();
-            // Dos veces a proposito: antes para que no se vea un fotograma con
-            // el tamano que le ponga el gestor de ventanas, y despues porque
-            // KWin trata el re-mapeo como una ventana nueva y la recoloca en el
-            // centro de la pantalla ignorando lo de antes.
             setup_initial_geometry(&window, &edge, &shape);
             let _ = window.show();
             setup_initial_geometry(&window, &edge, &shape);
+            true
         }
-        Err(_) => {}
-    }
+        Err(_) => false,
+    };
+    let _ = app.emit("notch_visibility_changed", new_vis);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -451,6 +858,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "store" || window.label() == "clipboard-settings" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 // Sin `show`: la ventana nace oculta y la destapa el primer
@@ -459,16 +874,28 @@ pub fn run() {
                 setup_initial_geometry(&win, "right", &Shape::default());
             }
 
-            // Crear menú para el icono en la bandeja del sistema (System Tray)
+            if let Some(window) = app.get_webview_window("clipboard") {
+                let win = window.clone();
+                setup_clipboard_geometry(&win, None);
+            }
+
+            // Crear menú para el icono en la bandeja del sistema (System Tray de Rimarc)
+            let store_item = MenuItem::with_id(app, "open_store", "Abrir Tienda de Componentes", true, None::<&str>)?;
             let toggle_item = MenuItem::with_id(app, "toggle", "Mostrar / Ocultar Notch", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Salir de Agent Notch", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&toggle_item, &quit_item])?;
+            let quit_item = MenuItem::with_id(app, "quit", "Salir de Rimarc", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&store_item, &toggle_item, &quit_item])?;
 
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("Agent Notch - Monitor de Agentes")
+                .tooltip("Rimarc - Tienda de Componentes e Isla Dinámica")
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open_store" => {
+                        if let Some(w) = app.get_webview_window("store") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
                     "quit" => {
                         app.exit(0);
                     }
@@ -485,7 +912,12 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        toggle_notch(app);
+                        if let Some(w) = app.get_webview_window("store") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        } else {
+                            toggle_notch(app);
+                        }
                     }
                 });
 
@@ -500,6 +932,25 @@ pub fn run() {
             }
 
             let _tray = tray_builder.build(app)?;
+
+            // Icono nativo en segundo plano (StatusNotifierItem) en KDE Plasma al estilo CopyQ:
+            // Clic izquierdo abre directamente la ventana flotante sin desplegar menús de texto intermedios.
+            // Clic derecho muestra el menú contextual con opciones.
+            clipboard_tray::setup_clipboard_tray(app.handle());
+
+            // El atajo global llega por un socket (ver `shortcut.rs`).
+            #[cfg(target_os = "linux")]
+            {
+                let handle = app.handle().clone();
+                shortcut::listen(move || {
+                    let app = handle.clone();
+                    let _ = handle.run_on_main_thread(move || {
+                        if clipboard_tray::is_enabled() {
+                            let _ = toggle_clipboard_window(app, None);
+                        }
+                    });
+                });
+            }
 
             // Cuota real de Claude en segundo plano: el escaneo nunca espera a la red.
             quota::spawn_poller();
@@ -530,12 +981,40 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             scan_agents,
+            get_system_stats,
             set_notch_mode,
             place_notch,
             drag_probe,
             open_in_terminal,
             open_in_file_manager,
-            exit_app
+            exit_app,
+            toggle_notch_state,
+            get_notch_visibility,
+            open_store_window,
+            minimize_store_window,
+            close_store_window,
+            get_clipboard_history,
+            mcp_command,
+            #[cfg(target_os = "linux")]
+            global_shortcut,
+            #[cfg(target_os = "linux")]
+            global_shortcut_owner,
+            #[cfg(target_os = "linux")]
+            set_global_shortcut,
+            #[cfg(target_os = "linux")]
+            block_global_shortcuts,
+            open_clipboard_item,
+            open_clipboard_settings,
+            close_clipboard_settings,
+            set_clipboard_content,
+            set_clipboard_image,
+            delete_clipboard_item,
+            start_clipboard_drag,
+            clear_clipboard_history,
+            toggle_clipboard_window,
+            close_clipboard_window,
+            get_clipboard_enabled,
+            set_clipboard_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -17,10 +17,20 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: transparent;
-    color-scheme: light dark;
+    color-scheme: dark;
     user-select: none;
     -webkit-user-drag: none;
+  }
+
+  /* El notch overlay dock mantiene fondo transparente */
+  body:not(:has(.rimarc-store-app)) {
+    background: transparent;
+  }
+
+  /* La ventana de la tienda: fondo negro puro absoluto (sin tonos grises) */
+  body:has(.rimarc-store-app),
+  #root:has(.rimarc-store-app) {
+    background-color: #000000 !important;
   }
 
   body {
@@ -29,5 +39,63 @@
       Roboto, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+}
+
+/* Boton con canto multicolor: un degradado 4 veces mas ancho que el boton
+   asoma por los 2 px de padding alrededor del relleno. Quieto en reposo; al
+   pasar el raton se desliza en bucle. `--rainbow-fill` lo pone quien lo usa,
+   para que el relleno siga al tema. */
+.rainbow-button {
+  position: relative;
+  display: inline-block;
+  padding: 2px;
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+  isolation: isolate;
+  cursor: pointer;
+  font-family: inherit;
+  background: transparent;
+}
+
+.rainbow-button::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 400%;
+  z-index: -1;
+  background: linear-gradient(115deg, #4fcf70, #fad648, #a767e5, #12bcfe, #44ce7b);
+  background-size: 25% 100%;
+  animation: rainbow-slide 0.75s linear infinite;
+  animation-play-state: paused;
+  translate: -5% 0%;
+  transition: translate 0.25s ease-out;
+}
+
+.rainbow-button:hover::before {
+  animation-play-state: running;
+  transition-duration: 0.75s;
+  translate: 0% 0%;
+}
+
+.rainbow-button > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  background: var(--rainbow-fill, #000);
+}
+
+@keyframes rainbow-slide {
+  to {
+    transform: translateX(-25%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rainbow-button::before {
+    animation: none;
   }
 }

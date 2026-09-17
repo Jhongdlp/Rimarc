@@ -31,6 +31,9 @@ tauri-plugin-updater = "2.11.0"
 gtk = "0.18"
 gdk = "0.18"
 cairo-rs = "0.18"
+ksni = { version = "0.3", features = ["blocking"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+drag = "2"
 
 
 

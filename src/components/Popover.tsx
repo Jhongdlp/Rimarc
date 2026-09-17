@@ -9,6 +9,7 @@ export interface PopoverProps {
   /** Borde del notch al que se pega y hacia donde se abre. */
   anchor: Anchor;
   height: number;
+  width?: number;
   open: boolean;
   /** Contenido del cajon que crece pegado a la carta. Sin alto, no hay cajon. */
   drawer?: ReactNode;
@@ -16,6 +17,11 @@ export interface PopoverProps {
   drawerOpen?: boolean;
   onHoverStart?: () => void;
   onHoverEnd?: () => void;
+  /** Contorno de la silueta; va centrado en el path, asi que pide 1 px de aire alrededor. */
+  stroke?: string;
+  strokeWidth?: number;
+  /** Opacidad solo del fondo; el contenido y el contorno quedan opacos. */
+  fillOpacity?: number;
   children: ReactNode;
 }
 
@@ -32,12 +38,16 @@ const ROT: Record<PopoverDir, number> = { left: 0, right: 180, up: 90, down: 270
 export function Popover({
   anchor,
   height,
+  width,
   open,
   drawer,
   drawerHeight = 0,
   drawerOpen = false,
   onHoverStart,
   onHoverEnd,
+  stroke,
+  strokeWidth = 2,
+  fillOpacity = 1,
   children,
 }: PopoverProps) {
   const { colors } = useTheme();
@@ -51,7 +61,7 @@ export function Popover({
   /** El panel sale de un lado (bordes verticales) o por arriba/abajo. */
   const sideways = dir === "left" || dir === "right";
   const tail = POPOVER.tail.length;
-  const W = POPOVER.width;
+  const W = width ?? POPOVER.width;
   const H = height;
 
   // La cola siempre suma sobre el eje perpendicular al borde.
@@ -198,7 +208,7 @@ export function Popover({
         viewBox={`0 0 ${boxW} ${boxH}`}
         style={{ position: "absolute", inset: 0, overflow: "visible" }}
       >
-        <motion.path d={d} fill={colors.surface} />
+        <motion.path d={d} fill={colors.surface} fillOpacity={fillOpacity} stroke={stroke ?? "none"} strokeWidth={strokeWidth} />
       </motion.svg>
 
       {/* Comparte caja con el SVG para que el recorte use sus mismas
@@ -218,7 +228,7 @@ export function Popover({
             position: "absolute",
             left: bodyX + POPOVER.padX,
             top: bodyY,
-            width: POPOVER.width - POPOVER.padX * 2,
+            width: W - POPOVER.padX * 2,
             height: H,
             fontFamily: FONT_FAMILY,
           }}

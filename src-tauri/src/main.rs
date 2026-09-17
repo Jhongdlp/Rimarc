@@ -31,6 +31,19 @@ fn cleanup_stale_instances() {
 }
 
 fn main() {
+    // Antes que la limpieza de instancias: el MCP convive con la app abierta.
+    #[cfg(target_os = "linux")]
+    if std::env::args().any(|a| a == "--mcp") {
+        return tauri_app_lib::mcp::serve();
+    }
+
+    // Lo lanza el atajo global (ver `shortcut.rs`): abre la carta en la instancia
+    // viva y sale. Sin instancia, arranca la app normal.
+    #[cfg(target_os = "linux")]
+    if std::env::args().any(|a| a == "--clipboard") && tauri_app_lib::shortcut::notify_running() {
+        return;
+    }
+
     cleanup_stale_instances();
 
     #[cfg(target_os = "linux")]

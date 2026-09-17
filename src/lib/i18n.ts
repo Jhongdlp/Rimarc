@@ -30,6 +30,9 @@ export interface Strings {
   pinned: string;
   position: string;
   details: string;
+  gallery: string;
+  tools: string;
+  activeTool: string;
   status: Record<AgentStatus, string>;
 }
 
@@ -52,6 +55,9 @@ const STRINGS: Record<Lang, Strings> = {
     pinned: "Fijo",
     position: "Posicion",
     details: "Detalles",
+    gallery: "Galería",
+    tools: "Herramientas",
+    activeTool: "Herramienta Activa",
     status: {
       running: "Ejecutando",
       thinking: "Pensando",
@@ -78,6 +84,9 @@ const STRINGS: Record<Lang, Strings> = {
     pinned: "Pinned",
     position: "Position",
     details: "Details",
+    gallery: "Gallery",
+    tools: "Tools",
+    activeTool: "Active Tool",
     status: {
       running: "Running",
       thinking: "Thinking",

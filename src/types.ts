@@ -54,3 +54,11 @@ export interface SystemAgentSummary {
   sessions: AgentSession[];
   timestamp: string;
 }
+
+export interface SystemMetrics {
+  cpu_percent: number;
+  memory_used_mb: number;
+  memory_total_mb: number;
+  memory_percent: number;
+  uptime_secs: number;
+}

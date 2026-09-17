@@ -1,8 +1,48 @@
+import { useState, useEffect } from "react";
 import { NotchBar } from "./components/NotchBar";
-import { useAgentScan } from "./hooks/useAgentScan";
-
-const SCAN_INTERVAL_MS = 2500;
+import { StoreApp } from "./components/store/StoreApp";
+import { ClipboardWidget } from "./components/ClipboardWidget";
+import { ClipboardSettings } from "./components/ClipboardSettings";
+import { getTauriWindowLabel } from "./lib/tauri";
 
 export default function App() {
-  return <NotchBar sessions={useAgentScan(SCAN_INTERVAL_MS)} />;
+  const [label, setLabel] = useState<string | null>(getTauriWindowLabel);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setLabel(getTauriWindowLabel());
+    };
+    window.addEventListener("hashchange", handleUpdate);
+    window.addEventListener("popstate", handleUpdate);
+    return () => {
+      window.removeEventListener("hashchange", handleUpdate);
+      window.removeEventListener("popstate", handleUpdate);
+    };
+  }, []);
+
+  // Si corre en la ventana dock overlay de Tauri ('main'), renderizar el Notch
+  if (label === "main") {
+    return <NotchBar />;
+  }
+
+  // Si corre en la ventana de portapapeles independiente de la barra de tareas ('clipboard')
+  if (label === "clipboard") {
+    return <ClipboardWidget />;
+  }
+
+  if (label === "clipboard-settings") {
+    return <ClipboardSettings />;
+  }
+
+  // En la ventana 'store' de Tauri o en modo navegador de desarrollo, renderizar la tienda
+  return (
+    <StoreApp
+      onToggleView={() => {
+        window.location.hash = "notch";
+        setLabel("main");
+      }}
+    />
+  );
 }
+
+

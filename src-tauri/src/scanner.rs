@@ -167,6 +167,27 @@ impl AgentScanner {
         }
     }
 
+    pub fn get_system_stats(&mut self) -> crate::models::SystemMetrics {
+        self.sys.refresh_cpu_usage();
+        self.sys.refresh_memory();
+        let cpu_percent = (self.sys.global_cpu_usage() * 10.0).round() / 10.0;
+        let memory_used_mb = self.sys.used_memory() / (1024 * 1024);
+        let memory_total_mb = self.sys.total_memory() / (1024 * 1024);
+        let memory_percent = if memory_total_mb > 0 {
+            ((memory_used_mb as f32 / memory_total_mb as f32) * 1000.0).round() / 10.0
+        } else {
+            0.0
+        };
+        let uptime_secs = sysinfo::System::uptime();
+        crate::models::SystemMetrics {
+            cpu_percent,
+            memory_used_mb,
+            memory_total_mb,
+            memory_percent,
+            uptime_secs,
+        }
+    }
+
     /// Un proceso por tipo de agente: el mas ocupado, y a igualdad de CPU el pid
     /// mas bajo, para que la eleccion no baile entre escaneos.
     fn pick_one_pid_per_agent(&self) -> HashMap<String, u32> {

@@ -11,6 +11,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:tauri": "NO_STRIP=true tauri build",
+    "package:deb": "NO_STRIP=true tauri build --bundles deb",
+    "package:appimage": "NO_STRIP=true tauri build --bundles appimage",
+    "package:all": "NO_STRIP=true tauri build",
     "clean": "pkill -9 -f 'target/debug/rimarc' || true"
   },
   "dependencies": {

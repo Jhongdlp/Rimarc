@@ -61,3 +61,12 @@ pub struct SystemAgentSummary {
     pub sessions: Vec<AgentSession>,
     pub timestamp: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemMetrics {
+    pub cpu_percent: f32,
+    pub memory_used_mb: u64,
+    pub memory_total_mb: u64,
+    pub memory_percent: f32,
+    pub uptime_secs: u64,
+}
